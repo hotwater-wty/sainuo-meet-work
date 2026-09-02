@@ -2,17 +2,24 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   Clock3,
   Download,
   FileText,
+  LogIn,
   Layers3,
   Link2,
   LoaderCircle,
+  Menu,
+  MessageSquarePlus,
   NotebookPen,
+  PanelLeftClose,
+  PanelLeftOpen,
   Save,
   Search,
+  Settings,
   Target,
   RefreshCw,
   ShieldCheck,
@@ -21,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { Citation, Familiarity, NoteDraft, ReadingGoal, SessionView } from "@/lib/types";
 import { preferredStageId } from "@/lib/stage-selection";
 
@@ -36,17 +44,23 @@ async function apiSession(response: Response): Promise<SessionView> {
   return body.session;
 }
 
-export function Workbench() {
+type WorkbenchView = "home" | "profile" | "reading";
+
+export function Workbench({ initialView = "home" }: { initialView?: WorkbenchView }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [session, setSession] = useState<SessionView>();
   const [mode, setMode] = useState<ImportMode>("file");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [showImporter, setShowImporter] = useState(true);
   const [showProfile, setShowProfile] = useState(true);
   const [drawer, setDrawer] = useState<{ title: string; citations: Citation[]; insufficient: boolean }>();
   const [selectedStageId, setSelectedStageId] = useState<string>();
   const [streamingText, setStreamingText] = useState("");
   const [selectedFileName, setSelectedFileName] = useState<string>();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const bootstrap = useCallback(async () => {
@@ -57,8 +71,8 @@ export function Workbench() {
       if (response.status === 401) response = await fetch("/api/sessions", { method: "POST" });
       const next = await apiSession(response);
       setSession(next);
-      setShowImporter(!next.source);
-      setShowProfile(!next.plan);
+      setShowImporter(initialView === "home" || !next.source);
+      setShowProfile(Boolean(next.source && (!next.plan || initialView === "profile")));
       setSelectedStageId(preferredStageId(next.plan?.stages));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法创建临时会话");
@@ -86,7 +100,9 @@ export function Workbench() {
       const next = await apiSession(await fetch("/api/sources/upload", { method: "POST", body: form }));
       setSession(next);
       setShowImporter(false);
+      setShowProfile(true);
       setSelectedFileName(undefined);
+      router.push("/profile");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "文件导入失败");
     } finally {
@@ -112,6 +128,8 @@ export function Workbench() {
       );
       setSession(next);
       setShowImporter(false);
+      setShowProfile(true);
+      router.push("/profile");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "URL 导入失败");
     } finally {
@@ -143,8 +161,29 @@ export function Workbench() {
       setSession(next);
       setShowProfile(false);
       setSelectedStageId(next.plan?.stages[0]?.id);
+      router.push("/reading");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "阅读路线生成失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createNewSession() {
+    if (session?.source && !window.confirm("新建会话会离开当前文档，且当前临时会话不会保留在列表中。继续吗？")) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/sessions?new=1", { method: "POST" });
+      await apiSession(response);
+      setSession(undefined);
+      setShowImporter(true);
+      setShowProfile(false);
+      setSelectedStageId(undefined);
+      setStreamingText("");
+      router.push("/home");
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "新建会话失败");
     } finally {
       setBusy(false);
     }
@@ -286,7 +325,13 @@ export function Workbench() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="brand-block">
+        <div className="topbar-leading">
+          {pathname !== "/" && pathname !== "/home" && (
+            <button className="topbar-back" type="button" title="返回上一页" aria-label="返回上一页" onClick={() => router.back()}>
+              <ArrowLeft size={19} />
+            </button>
+          )}
+          <button className="brand-block" type="button" title="返回首页" onClick={() => router.push("/home")}>
           <div className="brand-mark" aria-hidden="true">
             文
           </div>
@@ -294,6 +339,7 @@ export function Workbench() {
             <h1>文脉</h1>
             <p>技术文档精读工作区</p>
           </div>
+          </button>
         </div>
         <div className="session-status" title="最后活动两小时后会话自动清理">
           <Clock3 size={16} aria-hidden="true" />
@@ -301,8 +347,39 @@ export function Workbench() {
         </div>
       </header>
 
-      <div className="workspace">
+      <div className={`workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
         <aside className="source-rail" aria-label="当前来源">
+          <div className="rail-toolbar">
+            <button className="rail-new-button" type="button" title="新建阅读会话" onClick={() => void createNewSession()}>
+              <MessageSquarePlus size={17} />
+              <span>新建会话</span>
+            </button>
+            <button
+              className="icon-button rail-toggle"
+              type="button"
+              title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+              aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+              aria-expanded={!sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((value) => !value)}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
+          </div>
+          <div className="rail-nav" aria-label="工作区导航">
+            <button
+              className="rail-nav-item active"
+              type="button"
+              title="当前阅读"
+              onClick={() => router.push(session?.plan ? "/reading" : session?.source ? "/profile" : "/home")}
+            >
+              <Menu size={16} />
+              <span>当前阅读</span>
+            </button>
+            <button className="rail-nav-item" type="button" title="历史会话（即将推出）" onClick={() => setNotice("历史会话功能将在后续版本开放") }>
+              <Clock3 size={16} />
+              <span>历史会话</span>
+            </button>
+          </div>
           <div className="rail-heading">
             <span>当前来源</span>
             {source && (
@@ -311,7 +388,11 @@ export function Workbench() {
                 type="button"
                 title="替换来源"
                 aria-label="替换来源"
-                onClick={() => setShowImporter((value) => !value)}
+                onClick={() => {
+                  setShowImporter(true);
+                  setShowProfile(false);
+                  router.push("/home");
+                }}
               >
                 <RefreshCw size={17} />
               </button>
@@ -320,10 +401,12 @@ export function Workbench() {
 
           {source ? (
             <div className="source-details">
-              <div className="source-title-row">
+              <div className="source-card" tabIndex={0} aria-label={`${source.title}，悬浮查看来源详情`}>
+              <div className="source-title-row" title={source.title}>
                 <FileText size={20} aria-hidden="true" />
                 <strong>{source.title}</strong>
               </div>
+              <div className="source-hover-panel">
               <dl className="metadata-list">
                 <div>
                   <dt>类型</dt>
@@ -367,6 +450,8 @@ export function Workbench() {
                   <span>未发现阻断性问题</span>
                 </div>
               )}
+              </div>
+              </div>
             </div>
           ) : (
             <div className="empty-source">
@@ -374,6 +459,16 @@ export function Workbench() {
               <span>尚未导入文档</span>
             </div>
           )}
+          <div className="rail-footer">
+            <button className="rail-nav-item" type="button" title="设置（即将推出）" onClick={() => setNotice("设置功能将在后续版本开放") }>
+              <Settings size={16} />
+              <span>设置</span>
+            </button>
+            <button className="rail-nav-item" type="button" title="登录（即将推出）" onClick={() => setNotice("登录功能将在后续版本开放") }>
+              <LogIn size={16} />
+              <span>登录</span>
+            </button>
+          </div>
         </aside>
 
         <section className="main-workspace">
@@ -382,6 +477,14 @@ export function Workbench() {
               <AlertTriangle size={18} aria-hidden="true" />
               <span>{error}</span>
               <button type="button" onClick={() => setError(undefined)} aria-label="关闭错误提示">
+                关闭
+              </button>
+            </div>
+          )}
+          {notice && (
+            <div className="notice-banner" role="status">
+              <span>{notice}</span>
+              <button type="button" onClick={() => setNotice(undefined)} aria-label="关闭提示">
                 关闭
               </button>
             </div>
@@ -468,7 +571,7 @@ export function Workbench() {
               busy={busy}
               selectedStageId={selectedStageId}
               streamingText={streamingText}
-              onEditProfile={() => setShowProfile(true)}
+              onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
               onOpenSources={openSources}
               onOpenMessageCitations={(title, citations) =>
                 setDrawer({ title, citations, insufficient: citations.length === 0 })

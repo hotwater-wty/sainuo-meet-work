@@ -7,7 +7,8 @@ export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
     const existingId = request.cookies.get(SESSION_COOKIE)?.value;
-    const session = (existingId && sessionStore.get(existingId)) || sessionStore.create();
+    const forceNew = new URL(request.url).searchParams.get("new") === "1";
+    const session = (!forceNew && existingId && sessionStore.get(existingId)) || sessionStore.create();
     return NextResponse.json(
       { session: toSessionView(session) },
       { headers: { "Set-Cookie": sessionCookie(session.id), "Cache-Control": "no-store" } },

@@ -22,6 +22,26 @@ describe("P2 route contract", () => {
     expect(body.session.id).toBeTruthy();
   });
 
+  it("creates a distinct session when the user starts a new conversation", async () => {
+    const originalCookie = await sessionCookie();
+    const originalResponse = await currentSession(
+      new NextRequest("http://localhost/api/sessions/current", { headers: { cookie: originalCookie } }),
+    );
+    const original = (await originalResponse.json()) as { session: { id: string } };
+
+    const nextResponse = await createSession(
+      new NextRequest("http://localhost/api/sessions?new=1", {
+        method: "POST",
+        headers: { cookie: originalCookie },
+      }),
+    );
+    const next = (await nextResponse.json()) as { session: { id: string } };
+
+    expect(nextResponse.status).toBe(200);
+    expect(next.session.id).not.toBe(original.session.id);
+    expect(nextResponse.headers.get("set-cookie")).toContain(next.session.id);
+  });
+
   it("uploads a text source and refuses an unconfirmed replacement", async () => {
     const cookie = await sessionCookie();
     const form = new FormData();
