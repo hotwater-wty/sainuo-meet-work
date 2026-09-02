@@ -622,6 +622,23 @@ button:disabled {
   border-color: #9bc4bb;
 }
 
+.workspace-route-button {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #42524f;
+  background: rgb(255 253 249 / 94%);
+  box-shadow: 0 4px 12px rgb(18 38 34 / 8%);
+  font-size: 12px;
+}
+
+.workspace-route-button:hover { color: var(--accent-dark); border-color: #9bc4bb; }
+
 .error-banner {
   gap: 9px;
   min-height: 44px;
@@ -1631,6 +1648,24 @@ a.secondary-button {
   overflow-wrap: anywhere;
 }
 
+.completion-card {
+  width: min(790px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 18px 20px;
+  color: #246c5b;
+  background: #f0f8f5;
+  border: 1px solid #c6e1d9;
+  border-radius: 8px;
+}
+
+.completion-card > div { flex: 1; }
+.completion-card strong { display: block; font-size: 15px; }
+.completion-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.completion-card .primary-button { width: auto; flex: 0 0 auto; }
+
 .drawer-backdrop {
   position: fixed;
   inset: 0;
@@ -1691,6 +1726,15 @@ a.secondary-button {
 .source-preview-chunks article span { padding: 3px 5px; color: #fff; background: var(--accent-dark); border-radius: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .source-preview-chunks article small { min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .source-preview-chunks article p { margin: 0; color: #4f4b45; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.conversation-inspector { display: grid; gap: 24px; }
+.conversation-stage { display: grid; gap: 12px; }
+.conversation-stage + .conversation-stage { padding-top: 20px; border-top: 1px solid var(--line); }
+.conversation-stage-heading { display: flex; align-items: baseline; gap: 8px; color: var(--muted); }
+.conversation-stage-heading span { color: var(--accent-dark); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.conversation-stage-heading strong { color: var(--ink); font-size: 14px; }
+.conversation-messages { display: grid; gap: 18px; }
+.conversation-messages .reading-message { margin: 0; }
 
 @keyframes inspector-in { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
 

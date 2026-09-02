@@ -49,7 +49,7 @@ async function apiSession(response: Response): Promise<SessionView> {
 }
 
 type WorkbenchView = "home" | "profile" | "reading";
-type InspectorTab = "source" | "map" | "citations";
+type InspectorTab = "source" | "map" | "conversation" | "citations";
 
 interface CitationInspector {
   title: string;
@@ -96,7 +96,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(initialView === "home" || !next.source);
       setShowProfile(Boolean(next.source && (!next.plan || initialView === "profile")));
       setSelectedStageId(preferredStageId(next.plan?.stages));
-      setStageOpen(initialView === "reading" && Boolean(next.plan?.stages.some((stage) => stage.status !== "pending")));
+      setStageOpen(initialView === "reading" && Boolean(next.plan?.stages.some((stage) => stage.status === "active" || stage.status === "awaiting_note")));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法创建临时会话");
     } finally {
@@ -245,7 +245,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
 
   function openInspector(tab: InspectorTab) {
     setInspectorTabs((tabs) => {
-      const base: InspectorTab[] = tabs.length ? tabs : ["source", "map"];
+      const base: InspectorTab[] = tabs.length ? tabs : ["source", "map", "conversation"];
       return base.includes(tab) ? base : [...base, tab];
     });
     setActiveInspectorTab(tab);
@@ -261,7 +261,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   }
 
   function closeInspectorTab(tab: InspectorTab) {
-    if (tab === "source" || tab === "map") return;
+    if (tab === "source" || tab === "map" || tab === "conversation") return;
     setInspectorTabs((tabs) => {
       const next = tabs.filter((item) => item !== tab);
       if (activeInspectorTab === tab) setActiveInspectorTab(next.at(-1) ?? "map");
@@ -274,7 +274,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setInspectorTabs([]);
       return;
     }
-    setInspectorTabs(["source", "map"]);
+    setInspectorTabs(["source", "map", "conversation"]);
     setActiveInspectorTab("source");
     void loadSourcePreview();
   }
@@ -311,6 +311,10 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       if (action === "finish" || !response.headers.get("content-type")?.includes("text/event-stream")) {
         const next = await apiSession(response);
         setSession(next);
+        if (action === "finish") {
+          setInspectorTabs((tabs) => tabs.length ? (tabs.includes("conversation") ? tabs : [...tabs, "conversation"]) : ["source", "map", "conversation"]);
+          setActiveInspectorTab("conversation");
+        }
         return true;
       }
       if (!response.ok || !response.body) throw new Error("流式响应无法建立");
@@ -387,7 +391,18 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
         }),
       );
       setSession(next);
-      setSelectedStageId(next.plan?.stages.find((stage) => stage.status === "pending")?.id ?? stageId);
+      const nextPending = next.plan?.stages.find((stage) => stage.status === "pending")?.id;
+      setSelectedStageId(nextPending ?? stageId);
+      setStageOpen(false);
+      if (action === "accept") {
+        // 接受笔记后立即下载当前会话的 Markdown 成果，避免用户误以为按钮无效。
+        const link = document.createElement("a");
+        link.href = "/api/notes/export";
+        link.download = "精读笔记.md";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
       return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "笔记处理失败");
@@ -552,6 +567,11 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               <span>返回</span>
             </button>
           )}
+          {source && session?.plan && stageOpen && (
+            <button className="workspace-route-button" type="button" onClick={() => setStageOpen(false)}>
+              查看精读路线
+            </button>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <AlertTriangle size={18} aria-hidden="true" />
@@ -678,6 +698,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
           onCloseTab={closeInspectorTab}
           onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
           onOpenSources={openSources}
+          onOpenCitations={(title, citations) => openCitationInspector({ title, citations, insufficient: citations.length === 0 })}
           onOpenStage={(stageId) => {
             const target = session.plan?.stages.find((stage) => stage.id === stageId);
             setSelectedStageId(stageId);
@@ -843,7 +864,7 @@ function PlanView({
   const selectedStage = plan.stages.find((stage) => stage.id === selectedStageId);
 
   useEffect(() => {
-    if (selectedStage && selectedStage.status !== "pending") onStageOpenChange(true);
+    if (selectedStage && (selectedStage.status === "active" || selectedStage.status === "awaiting_note")) onStageOpenChange(true);
   }, [onStageOpenChange, selectedStage?.id, selectedStage?.status]);
 
   function openStage(stageId: string, start = false) {
@@ -871,6 +892,7 @@ function PlanView({
       onSelectStage={(stageId) => openStage(stageId, plan.stages.find((item) => item.id === stageId)?.status === "pending")}
     />
   );
+  const allCompleted = plan.stages.length > 0 && plan.stages.every((stage) => stage.status === "completed");
   return (
     <div className={`plan-workspace${stageOpen ? " stage-open" : ""}`}>
       {!stageOpen ? (
@@ -890,6 +912,13 @@ function PlanView({
             </section>
           )}
           {route}
+          {allCompleted && (
+            <section className="completion-card" aria-label="阅读路线已完成">
+              <CheckCircle2 size={22} />
+              <div><strong>本次精读路线已完成</strong><p>阶段笔记已整理完成，可以开始下一份技术文档。</p></div>
+              <button className="primary-button" type="button" onClick={() => window.location.assign("/home")}>学学别的</button>
+            </section>
+          )}
         </>
       ) : (
         <section className="reading-workbench-shell" aria-label="阶段精读工作台">
@@ -996,7 +1025,7 @@ function StageWorkspace({
         </button>
       )}
 
-      <div ref={messagesRef} className="message-list" aria-live="polite">
+      {stage.status !== "awaiting_note" && !(stage.status === "completed" && note) && <div ref={messagesRef} className="message-list" aria-live="polite">
         {stage.messages.map((message) => (
           <article key={message.id} className={`reading-message ${message.role}`}>
             <span className="message-role">{message.role === "assistant" ? "精读助手" : "你"}</span>
@@ -1022,7 +1051,7 @@ function StageWorkspace({
             <p>{streamingText}</p>
           </article>
         )}
-      </div>
+      </div>}
 
       {stage.status === "active" && !busy && (
         <div className="stage-controls">
@@ -1162,6 +1191,7 @@ function InspectorPanel({
   onEditProfile,
   onOpenSources,
   onOpenStage,
+  onOpenCitations,
 }: {
   tabs: InspectorTab[];
   activeTab: InspectorTab;
@@ -1176,13 +1206,14 @@ function InspectorPanel({
   onEditProfile: () => void;
   onOpenSources: (stageId: string, title: string) => void;
   onOpenStage: (stageId: string) => void;
+  onOpenCitations: (title: string, citations: Citation[]) => void;
 }) {
   const plan = session.plan!;
   return (
     <aside className="inspector-panel" aria-label="阅读导航和来源检查器">
       <div className="inspector-tabs" role="tablist" aria-label="检查器标签">
         {tabs.map((tab) => {
-          const label = tab === "source" ? "原文预览" : tab === "map" ? "文档地图" : citationValue?.title ?? "来源引用";
+          const label = tab === "source" ? "原文预览" : tab === "map" ? "文档地图" : tab === "conversation" ? "精读记录" : citationValue?.title ?? "来源引用";
           return (
             <div key={tab} className={`inspector-tab${activeTab === tab ? " active" : ""}`}>
               <button type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onActivate(tab)}>{tab === "source" ? <FileText size={15} /> : tab === "map" ? <Layers3 size={15} /> : <Search size={15} />}<span>{label}</span></button>
@@ -1210,6 +1241,9 @@ function InspectorPanel({
             <RouteSection plan={plan} session={session} busy={busy} selectedStageId={selectedStageId} onOpenSources={onOpenSources} onSelectStage={onOpenStage} />
           </>
         )}
+        {activeTab === "conversation" && tabs.includes("conversation") && (
+          <ConversationInspector session={session} selectedStageId={selectedStageId} onOpenCitations={onOpenCitations} />
+        )}
         {activeTab === "citations" && tabs.includes("citations") && (
           <>
             {citationValue?.insufficient ? <div className="drawer-empty">文档中未找到足够依据</div> : <ol className="citation-list">{citationValue?.citations.map((citation) => <li key={citation.chunkId}><div><span>{citation.chunkId}</span><strong>{citation.label}</strong></div><p>{citation.excerpt}</p></li>)}</ol>}
@@ -1217,6 +1251,41 @@ function InspectorPanel({
         )}
       </div>
     </aside>
+  );
+}
+
+function ConversationInspector({
+  session,
+  selectedStageId,
+  onOpenCitations,
+}: {
+  session: SessionView;
+  selectedStageId?: string;
+  onOpenCitations: (title: string, citations: Citation[]) => void;
+}) {
+  const stages = session.plan?.stages ?? [];
+  const selected = stages.find((stage) => stage.id === selectedStageId);
+  const visibleStages = selected ? [selected] : stages.filter((stage) => stage.messages.length > 0);
+  if (!visibleStages.length) return <div className="drawer-empty">当前还没有精读对话记录</div>;
+  return (
+    <div className="conversation-inspector">
+      {visibleStages.map((stage) => (
+        <section key={stage.id} className="conversation-stage">
+          <div className="conversation-stage-heading"><span>{stage.id}</span><strong>{stage.title}</strong></div>
+          <div className="conversation-messages">
+            {stage.messages.map((message) => (
+              <article key={message.id} className={`reading-message ${message.role}`}>
+                <span className="message-role">{message.role === "assistant" ? "精读助手" : "你"}</span>
+                {message.role === "assistant" ? (
+                  <MarkdownMessage content={message.content} citations={message.citations} onOpenCitations={onOpenCitations} title={stage.title} />
+                ) : <div className="user-bubble">{message.content}</div>}
+                {message.citations.length > 0 && <button className="citation-button" type="button" onClick={() => onOpenCitations(stage.title, message.citations)}><Search size={14} /> {message.citations.length} 条来源</button>}
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
