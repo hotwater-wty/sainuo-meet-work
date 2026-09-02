@@ -48,6 +48,13 @@ async function apiSession(response: Response): Promise<SessionView> {
 }
 
 type WorkbenchView = "home" | "profile" | "reading";
+type InspectorTab = "map" | "citations";
+
+interface CitationInspector {
+  title: string;
+  citations: Citation[];
+  insufficient: boolean;
+}
 
 export function Workbench({ initialView = "home" }: { initialView?: WorkbenchView }) {
   const router = useRouter();
@@ -59,8 +66,11 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   const [notice, setNotice] = useState<string>();
   const [showImporter, setShowImporter] = useState(true);
   const [showProfile, setShowProfile] = useState(true);
-  const [drawer, setDrawer] = useState<{ title: string; citations: Citation[]; insufficient: boolean }>();
+  const [inspectorTabs, setInspectorTabs] = useState<InspectorTab[]>([]);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("map");
+  const [citationInspector, setCitationInspector] = useState<CitationInspector>();
   const [selectedStageId, setSelectedStageId] = useState<string>();
+  const [stageOpen, setStageOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [selectedFileName, setSelectedFileName] = useState<string>();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -77,6 +87,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(initialView === "home" || !next.source);
       setShowProfile(Boolean(next.source && (!next.plan || initialView === "profile")));
       setSelectedStageId(preferredStageId(next.plan?.stages));
+      setStageOpen(initialView === "reading" && Boolean(next.plan?.stages.some((stage) => stage.status !== "pending")));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法创建临时会话");
     } finally {
@@ -182,6 +193,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(true);
       setShowProfile(false);
       setSelectedStageId(undefined);
+      setStageOpen(false);
       setStreamingText("");
       router.push("/home");
       router.refresh();
@@ -203,7 +215,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
         error?: { message?: string };
       };
       if (!response.ok) throw new Error(body.error?.message ?? "来源读取失败");
-      setDrawer({
+      openCitationInspector({
         title,
         citations: body.citations ?? [],
         insufficient: Boolean(body.evidenceInsufficient),
@@ -213,6 +225,28 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
     } finally {
       setBusy(false);
     }
+  }
+
+  function openInspector(tab: InspectorTab) {
+    setInspectorTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]));
+    setActiveInspectorTab(tab);
+  }
+
+  function openMapInspector() {
+    openInspector("map");
+  }
+
+  function openCitationInspector(value: CitationInspector) {
+    setCitationInspector(value);
+    openInspector("citations");
+  }
+
+  function closeInspectorTab(tab: InspectorTab) {
+    setInspectorTabs((tabs) => {
+      const next = tabs.filter((item) => item !== tab);
+      if (activeInspectorTab === tab) setActiveInspectorTab(next.at(-1) ?? "map");
+      return next;
+    });
   }
 
   async function runStageAction(
@@ -328,39 +362,44 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div className="topbar-leading">
-          <button className="brand-block" type="button" title="返回首页" onClick={() => router.push("/home")}>
-          <div className="brand-mark" aria-hidden="true">
-            文
-          </div>
-          <div>
-            <h1>文脉</h1>
-            <p>技术文档精读工作区</p>
-          </div>
-          </button>
+        <button
+          className="topbar-panel-button"
+          type="button"
+          title={sidebarCollapsed ? "展开左侧菜单" : "收起左侧菜单"}
+          aria-label={sidebarCollapsed ? "展开左侧菜单" : "收起左侧菜单"}
+          aria-expanded={!sidebarCollapsed}
+          onClick={() => setSidebarCollapsed((value) => !value)}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+        </button>
+        <div className="topbar-source" title={source?.title ?? "尚未导入来源"}>
+          <FileText size={16} aria-hidden="true" />
+          <span>{source?.title ?? "尚未导入来源"}</span>
         </div>
-        <div className="session-status" title="最后活动两小时后会话自动清理">
+        <div className="topbar-actions">
+          {source && session?.plan && (
+            <button className="topbar-inspector-button" type="button" onClick={openMapInspector} aria-label="打开阅读导航和来源检查器" title="打开阅读导航和来源检查器">
+              <Layers3 size={17} />
+              <span>阅读导航</span>
+            </button>
+          )}
+          <div className="session-status" title="最后活动两小时后会话自动清理">
           <Clock3 size={16} aria-hidden="true" />
           <span>临时会话至 {expiresAt}</span>
+          </div>
         </div>
       </header>
 
-      <div className={`workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+      <div className={`workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}${inspectorTabs.length ? " inspector-open" : ""}`}>
         <aside className="source-rail" aria-label="当前来源">
           <div className="rail-toolbar">
+            <button className="rail-brand" type="button" title="返回首页" onClick={() => router.push("/home")}>
+              <span className="brand-mark" aria-hidden="true">L</span>
+              <span><strong>Lumen</strong><small>技术文档精读</small></span>
+            </button>
             <button className="rail-new-button" type="button" title="新建阅读会话" onClick={() => void createNewSession()}>
               <MessageSquarePlus size={17} />
               <span>新建会话</span>
-            </button>
-            <button
-              className="icon-button rail-toggle"
-              type="button"
-              title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-              aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-              aria-expanded={!sidebarCollapsed}
-              onClick={() => setSidebarCollapsed((value) => !value)}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
             </button>
           </div>
           <div className="rail-nav" aria-label="工作区导航">
@@ -575,11 +614,12 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               busy={busy}
               selectedStageId={selectedStageId}
               streamingText={streamingText}
+              stageOpen={stageOpen}
+              onStageOpenChange={setStageOpen}
               onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
               onOpenSources={openSources}
-              onOpenMessageCitations={(title, citations) =>
-                setDrawer({ title, citations, insufficient: citations.length === 0 })
-              }
+              onOpenMapInspector={openMapInspector}
+              onOpenMessageCitations={(title, citations) => openCitationInspector({ title, citations, insufficient: citations.length === 0 })}
               onSelectStage={setSelectedStageId}
               onStageAction={runStageAction}
               onGenerateDraft={generateDraft}
@@ -588,7 +628,26 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
           )}
         </section>
       </div>
-      {drawer && <SourceDrawer value={drawer} onClose={() => setDrawer(undefined)} />}
+      {session?.plan && inspectorTabs.length > 0 && (
+        <InspectorPanel
+          tabs={inspectorTabs}
+          activeTab={activeInspectorTab}
+          citationValue={citationInspector}
+          session={session}
+          busy={busy}
+          selectedStageId={selectedStageId}
+          onActivate={setActiveInspectorTab}
+          onCloseTab={closeInspectorTab}
+          onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
+          onOpenSources={openSources}
+          onOpenStage={(stageId) => {
+            const target = session.plan?.stages.find((stage) => stage.id === stageId);
+            setSelectedStageId(stageId);
+            setStageOpen(true);
+            if (target?.status === "pending") void runStageAction(stageId, "start");
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -709,8 +768,11 @@ function PlanView({
   busy,
   selectedStageId,
   streamingText,
+  stageOpen,
+  onStageOpenChange,
   onEditProfile,
   onOpenSources,
+  onOpenMapInspector,
   onOpenMessageCitations,
   onSelectStage,
   onStageAction,
@@ -721,8 +783,11 @@ function PlanView({
   busy: boolean;
   selectedStageId?: string;
   streamingText: string;
+  stageOpen: boolean;
+  onStageOpenChange: (open: boolean) => void;
   onEditProfile: () => void;
   onOpenSources: (stageId: string, title: string) => void;
+  onOpenMapInspector: () => void;
   onOpenMessageCitations: (title: string, citations: Citation[]) => void;
   onSelectStage: (stageId: string) => void;
   onStageAction: (
@@ -740,16 +805,14 @@ function PlanView({
 }) {
   const plan = session.plan!;
   const selectedStage = plan.stages.find((stage) => stage.id === selectedStageId);
-  const [stageOpen, setStageOpen] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
 
   useEffect(() => {
-    if (selectedStage && selectedStage.status !== "pending") setStageOpen(true);
-  }, [selectedStage?.id, selectedStage?.status]);
+    if (selectedStage && selectedStage.status !== "pending") onStageOpenChange(true);
+  }, [onStageOpenChange, selectedStage?.id, selectedStage?.status]);
 
   function openStage(stageId: string, start = false) {
     onSelectStage(stageId);
-    setStageOpen(true);
+    onStageOpenChange(true);
     if (start) void onStageAction(stageId, "start");
   }
 
@@ -799,7 +862,7 @@ function PlanView({
               <span className="eyebrow">步骤 4 / 4 · 阶段精读</span>
               <strong>{selectedStage?.title ?? "当前阶段"}</strong>
             </div>
-            <button className="secondary-button" type="button" onClick={() => setMapOpen(true)}>
+            <button className="secondary-button" type="button" onClick={onOpenMapInspector}>
               <Layers3 size={16} /> 查看文档地图
             </button>
           </div>
@@ -816,21 +879,6 @@ function PlanView({
             />
           )}
         </section>
-      )}
-      {stageOpen && mapOpen && (
-        <div className="map-drawer-backdrop" role="presentation" onMouseDown={() => setMapOpen(false)}>
-          <aside className="map-drawer" aria-label="文档地图和精读路线" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="map-drawer-heading">
-              <div>
-                <span className="eyebrow">阅读导航</span>
-                <strong>文档地图与路线</strong>
-              </div>
-              <button className="icon-button" type="button" title="关闭文档地图" aria-label="关闭文档地图" onClick={() => setMapOpen(false)}> <X size={18} /> </button>
-            </div>
-            {map}
-            {route}
-          </aside>
-        </div>
       )}
     </div>
   );
@@ -902,7 +950,7 @@ function StageWorkspace({
   ) => Promise<boolean>;
 }) {
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   async function submit(action: "follow_up" | "answer_check") {
     const value = input.trim();
@@ -928,7 +976,7 @@ function StageWorkspace({
         </button>
       )}
 
-      <div className="message-list" aria-live="polite">
+      <div ref={messagesRef} className="message-list" aria-live="polite">
         {stage.messages.map((message) => (
           <article key={message.id} className={`reading-message ${message.role}`}>
             <span className="message-role">{message.role === "assistant" ? "精读助手" : "你"}</span>
@@ -954,10 +1002,9 @@ function StageWorkspace({
             <p>{streamingText}</p>
           </article>
         )}
-        <div ref={bottomRef} aria-hidden="true" />
       </div>
 
-      <button className="scroll-bottom-button" type="button" title="跳到最新内容" aria-label="跳到最新内容" onClick={() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}>
+      <button className="scroll-bottom-button" type="button" title="跳到最新内容" aria-label="跳到最新内容" onClick={() => messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" })}>
         <ArrowDown size={18} />
       </button>
 
@@ -1093,39 +1140,61 @@ function NoteEditor({
   );
 }
 
-function SourceDrawer({
-  value,
-  onClose,
+function InspectorPanel({
+  tabs,
+  activeTab,
+  citationValue,
+  session,
+  busy,
+  selectedStageId,
+  onActivate,
+  onCloseTab,
+  onEditProfile,
+  onOpenSources,
+  onOpenStage,
 }: {
-  value: { title: string; citations: Citation[]; insufficient: boolean };
-  onClose: () => void;
+  tabs: InspectorTab[];
+  activeTab: InspectorTab;
+  citationValue?: CitationInspector;
+  session: SessionView;
+  busy: boolean;
+  selectedStageId?: string;
+  onActivate: (tab: InspectorTab) => void;
+  onCloseTab: (tab: InspectorTab) => void;
+  onEditProfile: () => void;
+  onOpenSources: (stageId: string, title: string) => void;
+  onOpenStage: (stageId: string) => void;
 }) {
+  const plan = session.plan!;
   return (
-    <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
-      <aside className="source-drawer" aria-label="阶段来源" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="drawer-heading">
-          <div>
-            <span className="eyebrow">阶段依据</span>
-            <h2>{value.title}</h2>
-          </div>
-          <button className="icon-button" type="button" title="关闭" aria-label="关闭来源抽屉" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-        {value.insufficient ? (
-          <div className="drawer-empty">文档中未找到足够依据</div>
-        ) : (
-          <ol className="citation-list">
-            {value.citations.map((citation) => (
-              <li key={citation.chunkId}>
-                <div><span>{citation.chunkId}</span><strong>{citation.label}</strong></div>
-                <p>{citation.excerpt}</p>
-              </li>
-            ))}
-          </ol>
+    <aside className="inspector-panel" aria-label="阅读导航和来源检查器">
+      <div className="inspector-tabs" role="tablist" aria-label="检查器标签">
+        {tabs.map((tab) => {
+          const label = tab === "map" ? "文档地图" : citationValue?.title ?? "来源引用";
+          return (
+            <div key={tab} className={`inspector-tab${activeTab === tab ? " active" : ""}`}>
+              <button type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onActivate(tab)}>{tab === "map" ? <Layers3 size={15} /> : <Search size={15} />}<span>{label}</span></button>
+              <button className="inspector-tab-close" type="button" title={`关闭${label}`} aria-label={`关闭${label}`} onClick={() => onCloseTab(tab)}><X size={14} /></button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="inspector-content">
+        {activeTab === "map" && tabs.includes("map") && (
+          <>
+            <div className="inspector-heading"><div><span className="eyebrow">阅读导航</span><h2>文档地图与路线</h2></div><button className="icon-button" type="button" title="关闭文档地图" aria-label="关闭文档地图" onClick={() => onCloseTab("map")}><X size={18} /></button></div>
+            <DocumentMapPanel plan={plan} session={session} onEditProfile={onEditProfile} onExport={() => undefined} canExport={session.notes.some((note) => note.status === "accepted")} />
+            <RouteSection plan={plan} session={session} busy={busy} selectedStageId={selectedStageId} onOpenSources={onOpenSources} onSelectStage={onOpenStage} />
+          </>
         )}
-      </aside>
-    </div>
+        {activeTab === "citations" && tabs.includes("citations") && (
+          <>
+            <div className="inspector-heading"><div><span className="eyebrow">来源依据</span><h2>{citationValue?.title ?? "来源引用"}</h2></div><button className="icon-button" type="button" title="关闭来源引用" aria-label="关闭来源引用" onClick={() => onCloseTab("citations")}><X size={18} /></button></div>
+            {citationValue?.insufficient ? <div className="drawer-empty">文档中未找到足够依据</div> : <ol className="citation-list">{citationValue?.citations.map((citation) => <li key={citation.chunkId}><div><span>{citation.chunkId}</span><strong>{citation.label}</strong></div><p>{citation.excerpt}</p></li>)}</ol>}
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
