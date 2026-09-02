@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
+  ArrowUp,
   CheckCircle2,
   ChevronRight,
   Download,
@@ -521,6 +522,17 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               <span>尚未导入文档</span>
             </div>
           )}
+          {stageOpen && selectedStageId && session?.plan && (() => {
+            const currentStage = session.plan.stages.find((stage) => stage.id === selectedStageId);
+            return currentStage ? (
+              <div className="rail-reading-context" aria-label="当前精读阶段">
+                <span className="eyebrow">当前精读阶段 · {currentStage.id}</span>
+                <strong title={currentStage.title}>{currentStage.title}</strong>
+                <p title={currentStage.objective}>{currentStage.objective}</p>
+                <span className={`stage-status ${currentStage.status}`}>{stageStatusLabel(currentStage.status)}</span>
+              </div>
+            ) : null;
+          })()}
           <div className="rail-footer">
             <button className="rail-nav-item" type="button" title="设置（即将推出）" onClick={() => setNotice("设置功能将在后续版本开放")}>
               <Settings size={16} />
@@ -643,7 +655,6 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               onStageOpenChange={setStageOpen}
               onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
               onOpenSources={openSources}
-              onOpenMapInspector={openMapInspector}
               onOpenMessageCitations={(title, citations) => openCitationInspector({ title, citations, insufficient: citations.length === 0 })}
               onSelectStage={setSelectedStageId}
               onStageAction={runStageAction}
@@ -799,7 +810,6 @@ function PlanView({
   onStageOpenChange,
   onEditProfile,
   onOpenSources,
-  onOpenMapInspector,
   onOpenMessageCitations,
   onSelectStage,
   onStageAction,
@@ -814,7 +824,6 @@ function PlanView({
   onStageOpenChange: (open: boolean) => void;
   onEditProfile: () => void;
   onOpenSources: (stageId: string, title: string) => void;
-  onOpenMapInspector: () => void;
   onOpenMessageCitations: (title: string, citations: Citation[]) => void;
   onSelectStage: (stageId: string) => void;
   onStageAction: (
@@ -978,14 +987,7 @@ function StageWorkspace({
 
   return (
     <section className="stage-workspace" aria-labelledby="active-stage-heading">
-      <div className="stage-workspace-heading">
-        <div>
-          <span className="eyebrow">步骤 4 / 4 · 阶段精读 · {stage.id}</span>
-          <h2 id="active-stage-heading">{stage.title}</h2>
-          <p>{stage.objective}</p>
-        </div>
-        <span className={`stage-status ${stage.status}`}>{stageStatusLabel(stage.status)}</span>
-      </div>
+      <h2 id="active-stage-heading" className="sr-only">{stage.title}</h2>
 
       {stage.status === "pending" && !streamingText && (
         <button className="primary-button" type="button" disabled={busy} onClick={() => void onAction(stage.id, "start")}>
@@ -1022,35 +1024,29 @@ function StageWorkspace({
         )}
       </div>
 
-      <button className="scroll-bottom-button" type="button" title="跳到最新内容" aria-label="跳到最新内容" onClick={() => messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" })}>
-        <ArrowDown size={18} />
-      </button>
-
       {stage.status === "active" && !busy && (
         <div className="stage-controls">
-          <label className="field-label">
-            <span>继续本阶段</span>
+          <button className="scroll-bottom-button" type="button" title="跳到最新内容" aria-label="跳到最新内容" onClick={() => messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" })}>
+            <ArrowDown size={18} />
+          </button>
+          <div className="composer-box">
             <textarea
               value={input}
               maxLength={2_000}
               rows={3}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="输入追问，或写下你对理解检查的回答"
+              placeholder="输入追问，继续和精读助手讨论…"
+              aria-label="输入追问"
             />
-          </label>
-          <div className="stage-control-buttons">
-            <button className="secondary-button" type="button" disabled={!input.trim()} onClick={() => void submit("follow_up")}>
-              提交追问
-            </button>
-            <button className="secondary-button" type="button" disabled={!input.trim()} onClick={() => void submit("answer_check")}>
-              回答检查
-            </button>
-            <button className="secondary-button" type="button" onClick={() => void onAction(stage.id, "rephrase")}>
-              <RefreshCw size={16} /> 换一种解释
-            </button>
-            <button className="primary-button" type="button" onClick={() => void onAction(stage.id, "finish")}>
-              结束阶段
-            </button>
+            <div className="composer-actions">
+              <button className="composer-next" type="button" onClick={() => { if (window.confirm("确认结束本阶段并进入笔记确认吗？")) void onAction(stage.id, "finish"); }}>
+                下一阶段
+              </button>
+              <button className="composer-send" type="button" disabled={!input.trim()} onClick={() => void submit("follow_up")} aria-label="发送追问" title="发送追问">
+                <ArrowUp size={18} />
+                <span>追问</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

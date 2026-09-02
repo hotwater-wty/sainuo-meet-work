@@ -13,9 +13,9 @@
   --danger: #a63b36;
   --danger-soft: #fff0ee;
   --blue: #2866a6;
-  --frame-left: max(0px, calc((100vw - 1480px) / 2));
-  --left-rail-width: 292px;
-  --inspector-width: clamp(330px, 29vw, 450px);
+  --frame-left: max(0px, calc((100vw - 1440px) / 2));
+  --left-rail-width: 250px;
+  --inspector-width: clamp(300px, 24.3056vw, 420px);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--paper);
@@ -325,6 +325,8 @@ button:disabled {
 .sidebar-collapsed .source-title-row {
   justify-content: center;
 }
+.sidebar-collapsed .rail-reading-context { justify-items: center; padding-inline: 0; }
+.sidebar-collapsed .rail-reading-context > *:not(.stage-status) { display: none; }
 
 .rail-heading,
 .section-heading,
@@ -450,9 +452,17 @@ button:disabled {
 
 .source-title-row strong {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
 }
+
+.rail-reading-context { min-width: 0; display: grid; gap: 5px; margin-top: 24px; padding: 14px 0; border-block: 1px solid var(--line); }
+.rail-reading-context .eyebrow { margin: 0; font-size: 10px; }
+.rail-reading-context strong, .rail-reading-context p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-reading-context strong { font-size: 13px; }
+.rail-reading-context p { margin: 0; color: var(--muted); font-size: 11px; }
 
 .metadata-list {
   margin: 18px 0 20px;
@@ -546,7 +556,7 @@ button:disabled {
 .main-workspace {
   position: relative;
   margin-left: calc(var(--frame-left) + var(--left-rail-width));
-  width: calc(100% - var(--frame-left) - var(--left-rail-width));
+  width: calc(100% - (2 * var(--frame-left)) - var(--left-rail-width));
   height: calc(100vh - 64px);
   overflow-y: auto;
   min-width: 0;
@@ -562,13 +572,15 @@ button:disabled {
   width: var(--left-rail-width);
 }
 
+.workspace.sidebar-collapsed { --left-rail-width: 72px; }
+
 .workspace.sidebar-collapsed .main-workspace {
   margin-left: calc(var(--frame-left) + var(--left-rail-width));
-  width: calc(100% - var(--frame-left) - var(--left-rail-width));
+  width: calc(100% - (2 * var(--frame-left)) - var(--left-rail-width));
 }
 
 .workspace.inspector-open .main-workspace {
-  width: calc(100% - var(--frame-left) - var(--left-rail-width) - var(--inspector-width));
+  width: calc(100% - (2 * var(--frame-left)) - var(--left-rail-width));
 }
 
 /* 固定宽度工作台优先：当窗口不足以同时容纳左栏、900px 工作台和检查器时，
@@ -645,6 +657,12 @@ button:disabled {
   width: 100%;
   display: flex;
   justify-content: center;
+  transform: translateX(0);
+  transition: transform 220ms ease;
+}
+
+.workspace.inspector-open .plan-workspace.stage-open {
+  transform: translateX(calc(var(--inspector-width) / -2));
 }
 
 .map-actions {
@@ -677,8 +695,8 @@ button:disabled {
 }
 
 .reading-workbench-shell {
-  width: 900px;
-  flex: 0 0 900px;
+  width: 790px;
+  flex: 0 0 790px;
   height: calc(100vh - 112px);
   min-height: 520px;
   display: flex;
@@ -1263,6 +1281,8 @@ a.secondary-button {
   line-height: 1.55;
 }
 
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
 .message-list {
   min-height: 0;
   flex: 1;
@@ -1303,7 +1323,7 @@ a.secondary-button {
 .reading-message p {
   margin: 0;
   color: #273431;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1324,7 +1344,7 @@ a.secondary-button {
 
 .markdown-content {
   color: #273431;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.75;
   overflow-wrap: anywhere;
 }
@@ -1432,7 +1452,7 @@ a.secondary-button {
 .scroll-bottom-button {
   position: absolute;
   right: 18px;
-  bottom: 104px;
+  top: -58px;
   z-index: 5;
   width: 38px;
   height: 38px;
@@ -1469,8 +1489,10 @@ a.secondary-button {
 }
 
 .stage-controls {
+  position: relative;
+  flex: 0 0 150px;
   display: grid;
-  gap: 18px;
+  gap: 8px;
   margin-top: 12px;
   padding: 14px 0 0;
   border-top: 1px solid var(--line);
@@ -1478,7 +1500,20 @@ a.secondary-button {
 }
 
 .stage-controls .field-label { margin: 0; }
-.stage-controls textarea { min-height: 72px; max-height: 150px; resize: vertical; border-radius: 12px; background: #fffdf9; }
+.stage-controls .field-label > span { display: none; }
+.stage-controls textarea { min-height: 76px; max-height: 76px; resize: none; border-radius: 14px; background: #fffdf9; }
+
+.composer-box { position: relative; display: grid; gap: 8px; }
+.composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.composer-next,
+.composer-send { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 12px; font-weight: 700; transition: transform 160ms ease, background 160ms ease, color 160ms ease; }
+.composer-next { padding: 0 12px; border: 1px solid var(--line); color: var(--muted); background: #f5f1e9; }
+.composer-next:hover { color: var(--ink); background: #eee8dd; }
+.composer-send { min-width: 78px; padding: 0 12px; border: 1px solid var(--accent); color: #fff; background: var(--accent); }
+.composer-send:disabled { color: #9bafc2; background: #e8edf2; border-color: #d5e0e9; }
+.composer-send:not(:disabled):hover { background: var(--accent-dark); transform: translateY(-1px); }
+.composer-send svg { transition: transform 160ms ease; }
+.composer-send:not(:disabled):hover svg { transform: translateY(-2px); }
 
 .check-question {
   padding: 14px 16px;
@@ -1804,6 +1839,7 @@ a.secondary-button {
   }
 
   .workspace.inspector-open .main-workspace { width: 100%; }
+  .workspace.inspector-open .plan-workspace.stage-open { transform: none; }
 
   .main-back-button {
     left: 16px;
@@ -1928,5 +1964,5 @@ a.secondary-button {
     padding: 16px;
   }
 
-  .scroll-bottom-button { right: 12px; bottom: 96px; }
+  .scroll-bottom-button { right: 12px; top: -58px; }
 }
