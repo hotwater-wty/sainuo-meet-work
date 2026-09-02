@@ -1,0 +1,45 @@
+{
+  "name": "technical-doc-deep-reader",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "config:import": "tsx scripts/import-api-config.ts",
+    "p1": "tsx experiments/p1/run.ts",
+    "p1:parsing": "tsx experiments/p1/run.ts --only=parsing",
+    "p1:retrieval": "tsx experiments/p1/run.ts --only=retrieval",
+    "p1:model": "tsx experiments/p1/run.ts --only=model",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "csv-parse": "^6.1.0",
+    "linkedom": "^0.18.12",
+    "lucide-react": "^1.39.0",
+    "minisearch": "^7.2.0",
+    "next": "^16.3.4",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "remark-parse": "^11.0.0",
+    "undici": "^7.16.0",
+    "unified": "^11.0.5",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
