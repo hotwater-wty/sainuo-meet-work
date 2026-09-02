@@ -6,18 +6,18 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   Download,
   FileText,
   LogIn,
   Layers3,
   Link2,
   LoaderCircle,
-  Menu,
   MessageSquarePlus,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Save,
   Search,
   Settings,
@@ -48,12 +48,18 @@ async function apiSession(response: Response): Promise<SessionView> {
 }
 
 type WorkbenchView = "home" | "profile" | "reading";
-type InspectorTab = "map" | "citations";
+type InspectorTab = "source" | "map" | "citations";
 
 interface CitationInspector {
   title: string;
   citations: Citation[];
   insufficient: boolean;
+}
+
+interface SourcePreview {
+  title: string;
+  outline: string[];
+  chunks: Array<{ id: string; text: string; page?: number; headingPath: string[] }> ;
 }
 
 export function Workbench({ initialView = "home" }: { initialView?: WorkbenchView }) {
@@ -67,8 +73,10 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   const [showImporter, setShowImporter] = useState(true);
   const [showProfile, setShowProfile] = useState(true);
   const [inspectorTabs, setInspectorTabs] = useState<InspectorTab[]>([]);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("map");
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>("source");
   const [citationInspector, setCitationInspector] = useState<CitationInspector>();
+  const [sourcePreview, setSourcePreview] = useState<SourcePreview>();
+  const [previewBusy, setPreviewBusy] = useState(false);
   const [selectedStageId, setSelectedStageId] = useState<string>();
   const [stageOpen, setStageOpen] = useState(false);
   const [streamingText, setStreamingText] = useState("");
@@ -99,6 +107,10 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
     void bootstrap();
   }, [bootstrap]);
 
+  useEffect(() => {
+    if (inspectorTabs.length && !sourcePreview) void loadSourcePreview();
+  }, [inspectorTabs.length, sourcePreview]);
+
   const confirmReplace = () => !session?.source || window.confirm("替换后当前阅读路线与笔记会被清空。继续吗？");
 
   async function upload(event: FormEvent<HTMLFormElement>) {
@@ -116,6 +128,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(false);
       setShowProfile(true);
       setSelectedFileName(undefined);
+      setSourcePreview(undefined);
       router.push("/profile");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "文件导入失败");
@@ -143,6 +156,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setSession(next);
       setShowImporter(false);
       setShowProfile(true);
+      setSourcePreview(undefined);
       router.push("/profile");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "URL 导入失败");
@@ -195,6 +209,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setSelectedStageId(undefined);
       setStageOpen(false);
       setStreamingText("");
+      setSourcePreview(undefined);
       router.push("/home");
       router.refresh();
     } catch (caught) {
@@ -228,7 +243,10 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   }
 
   function openInspector(tab: InspectorTab) {
-    setInspectorTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]));
+    setInspectorTabs((tabs) => {
+      const base: InspectorTab[] = tabs.length ? tabs : ["source", "map"];
+      return base.includes(tab) ? base : [...base, tab];
+    });
     setActiveInspectorTab(tab);
   }
 
@@ -242,11 +260,37 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   }
 
   function closeInspectorTab(tab: InspectorTab) {
+    if (tab === "source" || tab === "map") return;
     setInspectorTabs((tabs) => {
       const next = tabs.filter((item) => item !== tab);
       if (activeInspectorTab === tab) setActiveInspectorTab(next.at(-1) ?? "map");
       return next;
     });
+  }
+
+  function toggleInspector() {
+    if (inspectorTabs.length) {
+      setInspectorTabs([]);
+      return;
+    }
+    setInspectorTabs(["source", "map"]);
+    setActiveInspectorTab("source");
+    void loadSourcePreview();
+  }
+
+  async function loadSourcePreview() {
+    if (sourcePreview || previewBusy) return;
+    setPreviewBusy(true);
+    try {
+      const response = await fetch("/api/sources/preview", { cache: "no-store" });
+      const body = (await response.json()) as { preview?: SourcePreview } & ApiErrorBody;
+      if (!response.ok || !body.preview) throw new Error(body.error?.message ?? "原文预览读取失败");
+      setSourcePreview(body.preview);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "原文预览读取失败");
+    } finally {
+      setPreviewBusy(false);
+    }
   }
 
   async function runStageAction(
@@ -353,12 +397,6 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   }
 
   const source = session?.source;
-  const expiresAt = session?.expiresAt
-    ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
-        new Date(session.expiresAt),
-      )
-    : "--:--";
-
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -378,15 +416,17 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
         </div>
         <div className="topbar-actions">
           {source && session?.plan && (
-            <button className="topbar-inspector-button" type="button" onClick={openMapInspector} aria-label="打开阅读导航和来源检查器" title="打开阅读导航和来源检查器">
-              <Layers3 size={17} />
-              <span>阅读导航</span>
+            <button
+              className="topbar-inspector-button"
+              type="button"
+              onClick={toggleInspector}
+              aria-label={inspectorTabs.length ? "收起右侧边栏" : "展开右侧边栏"}
+              title={inspectorTabs.length ? "收起右侧边栏" : "展开右侧边栏"}
+              aria-expanded={Boolean(inspectorTabs.length)}
+            >
+              {inspectorTabs.length ? <PanelRightClose size={19} /> : <PanelRightOpen size={19} />}
             </button>
           )}
-          <div className="session-status" title="最后活动两小时后会话自动清理">
-          <Clock3 size={16} aria-hidden="true" />
-          <span>临时会话至 {expiresAt}</span>
-          </div>
         </div>
       </header>
 
@@ -400,21 +440,6 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
             <button className="rail-new-button" type="button" title="新建阅读会话" onClick={() => void createNewSession()}>
               <MessageSquarePlus size={17} />
               <span>新建会话</span>
-            </button>
-          </div>
-          <div className="rail-nav" aria-label="工作区导航">
-            <button
-              className="rail-nav-item active"
-              type="button"
-              title="当前阅读"
-              onClick={() => router.push(session?.plan ? "/reading" : session?.source ? "/profile" : "/home")}
-            >
-              <Menu size={16} />
-              <span>当前阅读</span>
-            </button>
-            <button className="rail-nav-item" type="button" title="历史会话（即将推出）" onClick={() => setNotice("历史会话功能将在后续版本开放") }>
-              <Clock3 size={16} />
-              <span>历史会话</span>
             </button>
           </div>
           <div className="rail-heading">
@@ -497,11 +522,11 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
             </div>
           )}
           <div className="rail-footer">
-            <button className="rail-nav-item" type="button" title="设置（即将推出）" onClick={() => setNotice("设置功能将在后续版本开放") }>
+            <button className="rail-nav-item" type="button" title="设置（即将推出）" onClick={() => setNotice("设置功能将在后续版本开放")}>
               <Settings size={16} />
               <span>设置</span>
             </button>
-            <button className="rail-nav-item" type="button" title="登录（即将推出）" onClick={() => setNotice("登录功能将在后续版本开放") }>
+            <button className="rail-nav-item" type="button" title="登录（即将推出）" onClick={() => setNotice("登录功能将在后续版本开放")}>
               <LogIn size={16} />
               <span>登录</span>
             </button>
@@ -633,6 +658,8 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
           tabs={inspectorTabs}
           activeTab={activeInspectorTab}
           citationValue={citationInspector}
+          sourcePreview={sourcePreview}
+          previewBusy={previewBusy}
           session={session}
           busy={busy}
           selectedStageId={selectedStageId}
@@ -857,15 +884,6 @@ function PlanView({
         </>
       ) : (
         <section className="reading-workbench-shell" aria-label="阶段精读工作台">
-          <div className="reading-workbench-toolbar">
-            <div>
-              <span className="eyebrow">步骤 4 / 4 · 阶段精读</span>
-              <strong>{selectedStage?.title ?? "当前阶段"}</strong>
-            </div>
-            <button className="secondary-button" type="button" onClick={onOpenMapInspector}>
-              <Layers3 size={16} /> 查看文档地图
-            </button>
-          </div>
           {selectedStage && (
             <StageWorkspace
               stage={selectedStage}
@@ -1010,12 +1028,6 @@ function StageWorkspace({
 
       {stage.status === "active" && !busy && (
         <div className="stage-controls">
-          {stage.checkQuestion && (
-            <div className="check-question">
-              <strong>理解检查</strong>
-              <p>{stage.checkQuestion}</p>
-            </div>
-          )}
           <label className="field-label">
             <span>继续本阶段</span>
             <textarea
@@ -1144,6 +1156,8 @@ function InspectorPanel({
   tabs,
   activeTab,
   citationValue,
+  sourcePreview,
+  previewBusy,
   session,
   busy,
   selectedStageId,
@@ -1156,6 +1170,8 @@ function InspectorPanel({
   tabs: InspectorTab[];
   activeTab: InspectorTab;
   citationValue?: CitationInspector;
+  sourcePreview?: SourcePreview;
+  previewBusy: boolean;
   session: SessionView;
   busy: boolean;
   selectedStageId?: string;
@@ -1170,26 +1186,36 @@ function InspectorPanel({
     <aside className="inspector-panel" aria-label="阅读导航和来源检查器">
       <div className="inspector-tabs" role="tablist" aria-label="检查器标签">
         {tabs.map((tab) => {
-          const label = tab === "map" ? "文档地图" : citationValue?.title ?? "来源引用";
+          const label = tab === "source" ? "原文预览" : tab === "map" ? "文档地图" : citationValue?.title ?? "来源引用";
           return (
             <div key={tab} className={`inspector-tab${activeTab === tab ? " active" : ""}`}>
-              <button type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onActivate(tab)}>{tab === "map" ? <Layers3 size={15} /> : <Search size={15} />}<span>{label}</span></button>
-              <button className="inspector-tab-close" type="button" title={`关闭${label}`} aria-label={`关闭${label}`} onClick={() => onCloseTab(tab)}><X size={14} /></button>
+              <button type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onActivate(tab)}>{tab === "source" ? <FileText size={15} /> : tab === "map" ? <Layers3 size={15} /> : <Search size={15} />}<span>{label}</span></button>
+              {tab === "citations" && <button className="inspector-tab-close" type="button" title={`关闭${label}`} aria-label={`关闭${label}`} onClick={() => onCloseTab(tab)}><X size={14} /></button>}
             </div>
           );
         })}
       </div>
       <div className="inspector-content">
+        {activeTab === "source" && tabs.includes("source") && (
+          <section className="source-preview" aria-label="原文预览">
+            {previewBusy && <p className="inspector-loading">正在整理可预览的原文文本…</p>}
+            {!previewBusy && sourcePreview && (<>
+              <p className="source-preview-note">以下为已解析的原文文本预览；PDF 的原始排版、图片和批注不在首版范围内。</p>
+              {sourcePreview.outline.length > 0 && <nav className="source-preview-outline" aria-label="文档章节">{sourcePreview.outline.map((item) => <span key={item}>{item}</span>)}</nav>}
+              <div className="source-preview-chunks">
+                {sourcePreview.chunks.map((chunk) => <article key={chunk.id}><div><span>{chunk.id}</span><small>{chunk.headingPath.at(-1) ?? (chunk.page ? `第 ${chunk.page} 页` : "正文")}</small></div><p>{chunk.text}</p></article>)}
+              </div>
+            </>)}
+          </section>
+        )}
         {activeTab === "map" && tabs.includes("map") && (
           <>
-            <div className="inspector-heading"><div><span className="eyebrow">阅读导航</span><h2>文档地图与路线</h2></div><button className="icon-button" type="button" title="关闭文档地图" aria-label="关闭文档地图" onClick={() => onCloseTab("map")}><X size={18} /></button></div>
             <DocumentMapPanel plan={plan} session={session} onEditProfile={onEditProfile} onExport={() => undefined} canExport={session.notes.some((note) => note.status === "accepted")} />
             <RouteSection plan={plan} session={session} busy={busy} selectedStageId={selectedStageId} onOpenSources={onOpenSources} onSelectStage={onOpenStage} />
           </>
         )}
         {activeTab === "citations" && tabs.includes("citations") && (
           <>
-            <div className="inspector-heading"><div><span className="eyebrow">来源依据</span><h2>{citationValue?.title ?? "来源引用"}</h2></div><button className="icon-button" type="button" title="关闭来源引用" aria-label="关闭来源引用" onClick={() => onCloseTab("citations")}><X size={18} /></button></div>
             {citationValue?.insufficient ? <div className="drawer-empty">文档中未找到足够依据</div> : <ol className="citation-list">{citationValue?.citations.map((citation) => <li key={citation.chunkId}><div><span>{citation.chunkId}</span><strong>{citation.label}</strong></div><p>{citation.excerpt}</p></li>)}</ol>}
           </>
         )}
