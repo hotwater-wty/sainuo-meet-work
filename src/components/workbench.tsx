@@ -374,6 +374,29 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
     }
   }
 
+  async function skipDraft(stageId: string): Promise<boolean> {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const next = await apiSession(await fetch(`/api/notes/${stageId}/skip`, { method: "POST" }));
+      setSession(next);
+      setSelectedStageId(next.plan?.stages.find((stage) => stage.status === "pending")?.id ?? stageId);
+      setStageOpen(false);
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "跳过笔记失败");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishStageWithNoteDecision(stageId: string, decision: "generate" | "skip"): Promise<boolean> {
+    const finished = await runStageAction(stageId, "finish");
+    if (!finished) return false;
+    return decision === "generate" ? generateDraft(stageId) : skipDraft(stageId);
+  }
+
   async function resolveDraft(
     stageId: string,
     draftId: string,
@@ -562,14 +585,9 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
 
         <section className="main-workspace">
           {pathname !== "/" && pathname !== "/home" && (
-            <button className="main-back-button" type="button" title="返回上一页" aria-label="返回上一页" onClick={() => router.back()}>
+            <button className="main-back-button" type="button" title="返回" aria-label="返回">
               <ArrowLeft size={19} />
               <span>返回</span>
-            </button>
-          )}
-          {source && session?.plan && stageOpen && (
-            <button className="workspace-route-button" type="button" onClick={() => setStageOpen(false)}>
-              查看精读路线
             </button>
           )}
           {error && (
@@ -662,7 +680,15 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
           )}
 
           {source && !showImporter && showProfile && (
-            <ProfileForm session={session} busy={busy} onSubmit={generatePlan} />
+            <ProfileForm
+              session={session}
+              busy={busy}
+              onSubmit={generatePlan}
+              onCancel={() => {
+                setShowProfile(false);
+                router.push("/reading");
+              }}
+            />
           )}
 
           {source && session?.plan && !showImporter && !showProfile && (
@@ -679,6 +705,8 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               onSelectStage={setSelectedStageId}
               onStageAction={runStageAction}
               onGenerateDraft={generateDraft}
+              onFinishWithNoteDecision={finishStageWithNoteDecision}
+              onSkipDraft={skipDraft}
               onResolveDraft={resolveDraft}
             />
           )}
@@ -715,10 +743,12 @@ function ProfileForm({
   session,
   busy,
   onSubmit,
+  onCancel,
 }: {
   session: SessionView;
   busy: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
 }) {
   const source = session.source;
   const defaultGoal = session.profile?.goal ?? "overview";
@@ -813,10 +843,13 @@ function ProfileForm({
             placeholder="例如：重点关注事务边界与消息一致性"
           />
         </label>
-        <button className="primary-button" type="submit" disabled={busy}>
-          {busy ? <LoaderCircle className="spin" size={18} /> : <Layers3 size={18} />}
-          {session.plan ? "重新生成路线" : "生成阅读路线"}
-        </button>
+        <div className="profile-actions">
+          {session.plan && <button className="secondary-button" type="button" disabled={busy} onClick={onCancel}>放弃修改</button>}
+          <button className="primary-button" type="submit" disabled={busy}>
+            {busy ? <LoaderCircle className="spin" size={18} /> : <Layers3 size={18} />}
+            {session.plan ? "重新生成路线" : "生成阅读路线"}
+          </button>
+        </div>
       </form>
     </section>
   );
@@ -835,6 +868,8 @@ function PlanView({
   onSelectStage,
   onStageAction,
   onGenerateDraft,
+  onFinishWithNoteDecision,
+  onSkipDraft,
   onResolveDraft,
 }: {
   session: SessionView;
@@ -853,6 +888,8 @@ function PlanView({
     message?: string,
   ) => Promise<boolean>;
   onGenerateDraft: (stageId: string) => Promise<boolean>;
+  onFinishWithNoteDecision: (stageId: string, decision: "generate" | "skip") => Promise<boolean>;
+  onSkipDraft: (stageId: string) => Promise<boolean>;
   onResolveDraft: (
     stageId: string,
     draftId: string,
@@ -931,6 +968,8 @@ function PlanView({
               onOpenCitations={onOpenMessageCitations}
               note={session.notes.find((item) => item.stageId === selectedStage.id)}
               onGenerateDraft={onGenerateDraft}
+              onFinishWithNoteDecision={onFinishWithNoteDecision}
+              onSkipDraft={onSkipDraft}
               onResolveDraft={onResolveDraft}
             />
           )}
@@ -985,6 +1024,8 @@ function StageWorkspace({
   onOpenCitations,
   note,
   onGenerateDraft,
+  onFinishWithNoteDecision,
+  onSkipDraft,
   onResolveDraft,
 }: {
   stage: NonNullable<SessionView["plan"]>["stages"][number];
@@ -998,6 +1039,8 @@ function StageWorkspace({
   onOpenCitations: (title: string, citations: Citation[]) => void;
   note?: NoteDraft;
   onGenerateDraft: (stageId: string) => Promise<boolean>;
+  onFinishWithNoteDecision: (stageId: string, decision: "generate" | "skip") => Promise<boolean>;
+  onSkipDraft: (stageId: string) => Promise<boolean>;
   onResolveDraft: (
     stageId: string,
     draftId: string,
@@ -1006,12 +1049,17 @@ function StageWorkspace({
   ) => Promise<boolean>;
 }) {
   const [input, setInput] = useState("");
+  const [noteDecisionOpen, setNoteDecisionOpen] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   async function submit(action: "follow_up" | "answer_check") {
     const value = input.trim();
     if (!value) return;
     if (await onAction(stage.id, action, value)) setInput("");
+  }
+
+  async function resolveNoteDecision(decision: "generate" | "skip") {
+    if (await onFinishWithNoteDecision(stage.id, decision)) setNoteDecisionOpen(false);
   }
 
   return (
@@ -1068,7 +1116,7 @@ function StageWorkspace({
               aria-label="输入追问"
             />
             <div className="composer-actions">
-              <button className="composer-next" type="button" onClick={() => { if (window.confirm("确认结束本阶段并进入笔记确认吗？")) void onAction(stage.id, "finish"); }}>
+              <button className="composer-next" type="button" onClick={() => setNoteDecisionOpen(true)}>
                 下一阶段
               </button>
               <button className="composer-send" type="button" disabled={!input.trim()} onClick={() => void submit("follow_up")} aria-label="发送追问" title="发送追问">
@@ -1081,13 +1129,11 @@ function StageWorkspace({
       )}
 
       {stage.status === "awaiting_note" && !note && (
-        <div className="awaiting-note note-prompt">
+        <div className="awaiting-note note-recovery">
           <NotebookPen size={18} />
-          <span>讲解已结束，生成草稿后可编辑、接受或跳过。</span>
-          <button className="primary-button" type="button" disabled={busy} onClick={() => void onGenerateDraft(stage.id)}>
-            {busy ? <LoaderCircle className="spin" size={18} /> : <NotebookPen size={18} />}
-            生成阶段笔记
-          </button>
+          <span>笔记生成未完成，请重试生成或跳过本阶段笔记。</span>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => void onGenerateDraft(stage.id)}>重试生成</button>
+          <button className="secondary-button" type="button" disabled={busy} onClick={() => void onSkipDraft(stage.id)}>跳过笔记</button>
         </div>
       )}
 
@@ -1104,6 +1150,23 @@ function StageWorkspace({
 
       {stage.status === "completed" && note?.status === "skipped" && (
         <div className="awaiting-note"><SkipForward size={18} /><span>本阶段已完成，笔记已跳过。</span></div>
+      )}
+
+      {noteDecisionOpen && (
+        <div className="note-decision-backdrop" role="presentation">
+          <section className="note-decision-dialog" role="dialog" aria-modal="true" aria-labelledby="note-decision-heading">
+            <NotebookPen size={24} aria-hidden="true" />
+            <h3 id="note-decision-heading">是否需要生成笔记？</h3>
+            <p>生成后可编辑并确认；跳过则直接完成本阶段，且不会写入最终 Markdown 笔记。</p>
+            <div className="note-decision-actions">
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => void resolveNoteDecision("skip")}>跳过</button>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => void resolveNoteDecision("generate")}>
+                {busy ? <LoaderCircle className="spin" size={18} /> : <NotebookPen size={17} />}
+                生成
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </section>
   );

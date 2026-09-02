@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { exportNotes } from "../../src/lib/export-notes.js";
 import type { CompleteRequest, ModelClient } from "../../src/lib/model-client.js";
-import { createNoteDraft, resolveNoteDraft } from "../../src/lib/note-service.js";
+import { createNoteDraft, resolveNoteDraft, skipNoteDraft } from "../../src/lib/note-service.js";
 import type { SessionState } from "../../src/lib/types.js";
 
 class NoteModel implements ModelClient {
@@ -145,6 +145,16 @@ describe("confirmed notes", () => {
     expect(() => resolveNoteDraft(state, "ST1", { draftId: draft.id, action: "skip" })).toThrow(
       "已经完成其他处理",
     );
+  });
+
+  it("skips a stage without calling the model or creating a draft", () => {
+    const state = session();
+    const result = skipNoteDraft(state, "ST1");
+
+    expect(result.plan?.stages[0].status).toBe("completed");
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes[0]).toMatchObject({ stageId: "ST1", status: "skipped", content: "" });
+    expect(() => skipNoteDraft(state, "ST1")).not.toThrow();
   });
 
   it("excludes skipped notes and exports accepted edits with real citations", async () => {

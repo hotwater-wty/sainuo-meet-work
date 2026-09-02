@@ -146,6 +146,32 @@ export function resolveNoteDraft(
   return toSessionView(session);
 }
 
+/**
+ * 用户明确选择跳过时，不应为了满足旧接口而额外调用模型生成草稿。
+ * 仍写入一条 skipped 记录，使阶段状态和导出过滤规则保持一致。
+ */
+export function skipNoteDraft(session: SessionState, stageId: string): SessionView {
+  if (!session.plan) throw new AppError("PLAN_REQUIRED", "请先完成阅读路线", 409);
+  const stage = session.plan.stages.find((item) => item.id === stageId);
+  if (!stage) throw new AppError("STAGE_NOT_FOUND", "阅读阶段不存在", 404);
+  const existing = session.notes.find((item) => item.stageId === stageId);
+  if (existing) {
+    if (existing.status === "skipped") return toSessionView(session);
+    throw new AppError("DRAFT_ALREADY_RESOLVED", "该阶段笔记已经完成其他处理", 409);
+  }
+  if (stage.status !== "awaiting_note") throw new AppError("NOTE_NOT_READY", "请先结束本阶段讲解", 409);
+  session.notes.push({
+    id: randomUUID(),
+    stageId,
+    content: "",
+    status: "skipped",
+    createdAt: new Date().toISOString(),
+    resolvedAt: new Date().toISOString(),
+  });
+  stage.status = "completed";
+  return toSessionView(session);
+}
+
 export function sanitizeMarkdown(content: string): string {
   return content
     .replace(/<(\/?)(script|iframe|object|embed|style|link|meta)\b/gi, "&lt;$1$2")

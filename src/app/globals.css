@@ -622,23 +622,6 @@ button:disabled {
   border-color: #9bc4bb;
 }
 
-.workspace-route-button {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  z-index: 4;
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: #42524f;
-  background: rgb(255 253 249 / 94%);
-  box-shadow: 0 4px 12px rgb(18 38 34 / 8%);
-  font-size: 12px;
-}
-
-.workspace-route-button:hover { color: var(--accent-dark); border-color: #9bc4bb; }
-
 .error-banner {
   gap: 9px;
   min-height: 44px;
@@ -1575,6 +1558,41 @@ a.secondary-button {
 .note-prompt .primary-button {
   flex: 0 0 auto;
 }
+
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.profile-actions .primary-button { width: auto; }
+
+.note-decision-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(47 45 41 / 36%);
+  backdrop-filter: blur(2px);
+}
+
+.note-decision-dialog {
+  width: min(430px, 100%);
+  padding: 26px;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 24px 54px rgb(43 37 28 / 22%);
+}
+
+.note-decision-dialog > svg { color: var(--accent-dark); }
+.note-decision-dialog h3 { margin: 14px 0 8px; font-size: 18px; }
+.note-decision-dialog p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.note-decision-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.note-decision-actions .primary-button { width: auto; }
 
 .note-editor {
   margin-top: 24px;
