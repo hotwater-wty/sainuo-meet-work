@@ -28,6 +28,7 @@
 - `docs/OPEN_ISSUES.md`：完成后的待解决和待决策事项。
 - `docs/UX_ISSUES.md`：用户试用中发现的流程、交互、语言和视觉体验问题，独立于技术/产品开放问题。
 - `docs/reports/UX_AND_AI_TUTOR_REVIEW.md`：首轮体验审查、Markdown 渲染、侧边对话抽屉和 AI 助教评估报告。
+- `docs/reports/WORKSPACE_SESSION_AUTH_REVIEW.md`：Codex 式工作区、临时会话、历史、设置、数据库和登录边界评估。
 - `docs/reports/LOCAL_ACCEPTANCE.md`：真实 MyBatis 浏览器主流程、移动端、自动化与安全验收证据。
 
 ## 本地运行
