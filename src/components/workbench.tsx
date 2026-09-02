@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
@@ -29,6 +30,8 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Citation, Familiarity, NoteDraft, ReadingGoal, SessionView } from "@/lib/types";
 import { preferredStageId } from "@/lib/stage-selection";
 
@@ -326,11 +329,6 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
     <main className="app-shell">
       <header className="topbar">
         <div className="topbar-leading">
-          {pathname !== "/" && pathname !== "/home" && (
-            <button className="topbar-back" type="button" title="返回上一页" aria-label="返回上一页" onClick={() => router.back()}>
-              <ArrowLeft size={19} />
-            </button>
-          )}
           <button className="brand-block" type="button" title="返回首页" onClick={() => router.push("/home")}>
           <div className="brand-mark" aria-hidden="true">
             文
@@ -472,6 +470,12 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
         </aside>
 
         <section className="main-workspace">
+          {pathname !== "/" && pathname !== "/home" && (
+            <button className="main-back-button" type="button" title="返回上一页" aria-label="返回上一页" onClick={() => router.back()}>
+              <ArrowLeft size={19} />
+              <span>返回</span>
+            </button>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <AlertTriangle size={18} aria-hidden="true" />
@@ -736,115 +740,136 @@ function PlanView({
 }) {
   const plan = session.plan!;
   const selectedStage = plan.stages.find((stage) => stage.id === selectedStageId);
-  return (
-    <div className="plan-workspace">
-      {selectedStage && (
-        <StageWorkspace
-          stage={selectedStage}
-          busy={busy}
-          streamingText={streamingText}
-          onAction={onStageAction}
-          onOpenCitations={onOpenMessageCitations}
-          note={session.notes.find((item) => item.stageId === selectedStage.id)}
-          onGenerateDraft={onGenerateDraft}
-          onResolveDraft={onResolveDraft}
-        />
-      )}
-      <section className="document-map" aria-labelledby="map-heading">
-        <div className="section-heading compact-heading">
-          <div>
-            <span className="eyebrow">文档地图</span>
-            <h2 id="map-heading">{plan.map.coreProblem}</h2>
-          </div>
-          <button className="secondary-button" type="button" onClick={onEditProfile}>
-            <RefreshCw size={16} /> 调整画像
-          </button>
-          {session.notes.some((note) => note.status === "accepted") && (
-            <a className="secondary-button download-button" href="/api/notes/export" download>
-              <Download size={16} /> 导出笔记
-            </a>
-          )}
-        </div>
-        <p className="map-purpose">{plan.map.purpose}</p>
-        <div className="map-columns">
-          <div>
-            <h3>关键结论</h3>
-            <ul>{plan.map.keyConclusions.map((item) => <li key={item}>{item}</li>)}</ul>
-          </div>
-          <div>
-            <h3>前置知识</h3>
-            {plan.map.prerequisites.length ? (
-              <ul>{plan.map.prerequisites.map((item) => <li key={item}>{item}</li>)}</ul>
-            ) : (
-              <p>无额外前置要求</p>
-            )}
-          </div>
-        </div>
-        <div className="term-strip" aria-label="核心术语">
-          {plan.map.terms.map((item) => (
-            <span key={item.term} title={item.meaning}>{item.term}</span>
-          ))}
-        </div>
-        {plan.map.limitations.length > 0 && (
-          <ul className="map-limitations">
-            {plan.map.limitations.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        )}
-      </section>
+  const [stageOpen, setStageOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
-      <section className="route-section" aria-labelledby="route-heading">
-        <div className="route-heading-row">
-          <div>
-            <span className="eyebrow">步骤 3 / 4 · 精读路线</span>
-            <h2 id="route-heading">{plan.stages.length} 个阶段</h2>
+  useEffect(() => {
+    if (selectedStage && selectedStage.status !== "pending") setStageOpen(true);
+  }, [selectedStage?.id, selectedStage?.status]);
+
+  function openStage(stageId: string, start = false) {
+    onSelectStage(stageId);
+    setStageOpen(true);
+    if (start) void onStageAction(stageId, "start");
+  }
+
+  const map = (
+    <DocumentMapPanel
+      plan={plan}
+      session={session}
+      onEditProfile={onEditProfile}
+      onExport={() => undefined}
+      canExport={session.notes.some((note) => note.status === "accepted")}
+    />
+  );
+  const route = (
+    <RouteSection
+      plan={plan}
+      session={session}
+      busy={busy}
+      selectedStageId={selectedStageId}
+      onOpenSources={onOpenSources}
+      onSelectStage={(stageId) => openStage(stageId, plan.stages.find((item) => item.id === stageId)?.status === "pending")}
+    />
+  );
+  return (
+    <div className={`plan-workspace${stageOpen ? " stage-open" : ""}`}>
+      {!stageOpen ? (
+        <>
+          {map}
+          {selectedStage && selectedStage.status === "pending" && (
+            <section className="stage-launcher" aria-label="开始当前阶段">
+              <div>
+                <span className="eyebrow">准备好后开始精读</span>
+                <strong>{selectedStage.title}</strong>
+                <p>{selectedStage.objective}</p>
+              </div>
+              <button className="primary-button" type="button" disabled={busy} onClick={() => openStage(selectedStage.id, true)}>
+                {busy ? <LoaderCircle className="spin" size={18} /> : <ChevronRight size={18} />}
+                开始本阶段
+              </button>
+            </section>
+          )}
+          {route}
+        </>
+      ) : (
+        <section className="reading-workbench-shell" aria-label="阶段精读工作台">
+          <div className="reading-workbench-toolbar">
+            <div>
+              <span className="eyebrow">步骤 4 / 4 · 阶段精读</span>
+              <strong>{selectedStage?.title ?? "当前阶段"}</strong>
+            </div>
+            <button className="secondary-button" type="button" onClick={() => setMapOpen(true)}>
+              <Layers3 size={16} /> 查看文档地图
+            </button>
           </div>
-          <span className="profile-summary">{profileLabel(session.profile?.goal)} · {familiarityLabel(session.profile?.familiarity)}</span>
+          {selectedStage && (
+            <StageWorkspace
+              stage={selectedStage}
+              busy={busy}
+              streamingText={streamingText}
+              onAction={onStageAction}
+              onOpenCitations={onOpenMessageCitations}
+              note={session.notes.find((item) => item.stageId === selectedStage.id)}
+              onGenerateDraft={onGenerateDraft}
+              onResolveDraft={onResolveDraft}
+            />
+          )}
+        </section>
+      )}
+      {stageOpen && mapOpen && (
+        <div className="map-drawer-backdrop" role="presentation" onMouseDown={() => setMapOpen(false)}>
+          <aside className="map-drawer" aria-label="文档地图和精读路线" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="map-drawer-heading">
+              <div>
+                <span className="eyebrow">阅读导航</span>
+                <strong>文档地图与路线</strong>
+              </div>
+              <button className="icon-button" type="button" title="关闭文档地图" aria-label="关闭文档地图" onClick={() => setMapOpen(false)}> <X size={18} /> </button>
+            </div>
+            {map}
+            {route}
+          </aside>
         </div>
-        <ol className="stage-list">
-          {plan.stages.map((stage, index) => (
-            <li key={stage.id} className={selectedStageId === stage.id ? "selected" : ""}>
-              <div className="stage-index">{String(index + 1).padStart(2, "0")}</div>
-              <div className="stage-copy">
-                <div className="stage-title-line">
-                  <h3>{stage.title}</h3>
-                  <span className={`stage-status ${stage.status}`}>{stageStatusLabel(stage.status)}</span>
-                </div>
-                <p>{stage.objective}</p>
-                <small>{stage.rationale}</small>
-                <div className="scope-row">
-                  {stage.sourceScopes.map((scope) => <span key={scope}>{scope}</span>)}
-                </div>
-              </div>
-              <div className="stage-actions">
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="查看阶段依据"
-                  aria-label={`查看${stage.title}的阶段依据`}
-                  disabled={busy}
-                  onClick={() => void onOpenSources(stage.id, stage.title)}
-                >
-                  <Search size={17} />
-                </button>
-                <button
-                  className="icon-button"
-                  type="button"
-                  title={stage.status === "pending" ? "开始阶段" : "查看阶段"}
-                  aria-label={`${stage.status === "pending" ? "开始" : "查看"}${stage.title}`}
-                  disabled={busy}
-                  onClick={() => {
-                    onSelectStage(stage.id);
-                    if (stage.status === "pending") void onStageAction(stage.id, "start");
-                  }}
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
+      )}
     </div>
+  );
+}
+
+function DocumentMapPanel({ plan, session, onEditProfile, onExport, canExport }: { plan: NonNullable<SessionView["plan"]>; session: SessionView; onEditProfile: () => void; onExport: () => void; canExport: boolean }) {
+  return (
+    <section className="document-map" aria-labelledby="map-heading">
+      <div className="section-heading compact-heading">
+        <div>
+          <span className="eyebrow">文档地图</span>
+          <h2 id="map-heading">{plan.map.coreProblem}</h2>
+        </div>
+        <div className="map-actions">
+          <button className="secondary-button" type="button" onClick={onEditProfile}><RefreshCw size={16} /> 调整画像</button>
+          {canExport && <a className="secondary-button download-button" href="/api/notes/export" download onClick={onExport}><Download size={16} /> 导出笔记</a>}
+        </div>
+      </div>
+      <p className="map-purpose">{plan.map.purpose}</p>
+      <div className="map-columns">
+        <div><h3>关键结论</h3><ul>{plan.map.keyConclusions.map((item) => <li key={item}>{item}</li>)}</ul></div>
+        <div><h3>前置知识</h3>{plan.map.prerequisites.length ? <ul>{plan.map.prerequisites.map((item) => <li key={item}>{item}</li>)}</ul> : <p>无额外前置要求</p>}</div>
+      </div>
+      <div className="term-strip" aria-label="核心术语">{plan.map.terms.map((item) => <span key={item.term} title={item.meaning}>{item.term}</span>)}</div>
+      {plan.map.limitations.length > 0 && <ul className="map-limitations">{plan.map.limitations.map((item) => <li key={item}>{item}</li>)}</ul>}
+    </section>
+  );
+}
+
+function RouteSection({ plan, session, busy, selectedStageId, onOpenSources, onSelectStage }: { plan: NonNullable<SessionView["plan"]>; session: SessionView; busy: boolean; selectedStageId?: string; onOpenSources: (stageId: string, title: string) => void; onSelectStage: (stageId: string) => void }) {
+  return (
+    <section className="route-section" aria-labelledby="route-heading">
+      <div className="route-heading-row"><div><span className="eyebrow">步骤 3 / 4 · 精读路线</span><h2 id="route-heading">{plan.stages.length} 个阶段</h2></div><span className="profile-summary">{profileLabel(session.profile?.goal)} · {familiarityLabel(session.profile?.familiarity)}</span></div>
+      <ol className="stage-list">{plan.stages.map((stage, index) => <li key={stage.id} className={selectedStageId === stage.id ? "selected" : ""}>
+        <div className="stage-index">{String(index + 1).padStart(2, "0")}</div>
+        <div className="stage-copy"><div className="stage-title-line"><h3>{stage.title}</h3><span className={`stage-status ${stage.status}`}>{stageStatusLabel(stage.status)}</span></div><p>{stage.objective}</p><small>{stage.rationale}</small><div className="scope-row">{stage.sourceScopes.map((scope) => <span key={scope}>{scope}</span>)}</div></div>
+        <div className="stage-actions"><button className="icon-button" type="button" title="查看阶段依据" aria-label={`查看${stage.title}的阶段依据`} disabled={busy} onClick={() => onOpenSources(stage.id, stage.title)}><Search size={17} /></button><button className="icon-button" type="button" title={stage.status === "pending" ? "开始阶段" : "查看阶段"} aria-label={`${stage.status === "pending" ? "开始" : "查看"}${stage.title}`} disabled={busy} onClick={() => onSelectStage(stage.id)}><ChevronRight size={18} /></button></div>
+      </li>)}</ol>
+    </section>
   );
 }
 
@@ -877,6 +902,7 @@ function StageWorkspace({
   ) => Promise<boolean>;
 }) {
   const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   async function submit(action: "follow_up" | "answer_check") {
     const value = input.trim();
@@ -906,7 +932,11 @@ function StageWorkspace({
         {stage.messages.map((message) => (
           <article key={message.id} className={`reading-message ${message.role}`}>
             <span className="message-role">{message.role === "assistant" ? "精读助手" : "你"}</span>
-            <p>{message.content}</p>
+            {message.role === "assistant" ? (
+              <MarkdownMessage content={message.content} citations={message.citations} onOpenCitations={onOpenCitations} title={stage.title} />
+            ) : (
+              <div className="user-bubble">{message.content}</div>
+            )}
             {message.citations.length > 0 && (
               <button
                 className="citation-button"
@@ -924,7 +954,12 @@ function StageWorkspace({
             <p>{streamingText}</p>
           </article>
         )}
+        <div ref={bottomRef} aria-hidden="true" />
       </div>
+
+      <button className="scroll-bottom-button" type="button" title="跳到最新内容" aria-label="跳到最新内容" onClick={() => bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })}>
+        <ArrowDown size={18} />
+      </button>
 
       {stage.status === "active" && !busy && (
         <div className="stage-controls">
@@ -987,6 +1022,30 @@ function StageWorkspace({
         <div className="awaiting-note"><SkipForward size={18} /><span>本阶段已完成，笔记已跳过。</span></div>
       )}
     </section>
+  );
+}
+
+function MarkdownMessage({ content, citations, onOpenCitations, title }: { content: string; citations: Citation[]; onOpenCitations: (title: string, citations: Citation[]) => void; title: string }) {
+  const allowed = new Map(citations.map((citation) => [citation.chunkId, citation]));
+  const markdown = content.replace(/\[(S\d+)\]/g, (match, id: string) => allowed.has(id) ? `[${id}](#citation-${id})` : match);
+  return (
+    <div className="markdown-content">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        components={{
+          a: ({ href, children }) => {
+            if (href?.startsWith("#citation-")) {
+              const citation = allowed.get(href.slice("#citation-".length));
+              if (citation) return <button className="inline-citation" type="button" onClick={() => onOpenCitations(title, [citation])}>{children}</button>;
+            }
+            return <a href={href}>{children}</a>;
+          },
+        }}
+      >
+        {markdown}
+      </ReactMarkdown>
+    </div>
   );
 }
 
