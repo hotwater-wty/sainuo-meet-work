@@ -14,7 +14,7 @@ export default function LandingPage() {
 
       <section className="landing-hero" aria-labelledby="landing-title">
         <p className="landing-kicker">READ THE SOURCE · KEEP THE CONTEXT</p>
-        <h1 id="landing-title">把陌生技术文档，<br />读成自己的理解。</h1>
+        <h1 id="landing-title">把陌生技术文档<br />读成自己的理解</h1>
         <p className="landing-description">
           Lumen 为 RFC、技术规范与架构文档建立阅读地图，按阶段讲清机制、约束与来源，
           让每一次精读都留下可核对的笔记。
