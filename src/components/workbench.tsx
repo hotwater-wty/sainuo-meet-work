@@ -98,7 +98,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(initialView === "home" || !next.source);
       setShowProfile(Boolean(next.source && (!next.plan || initialView === "profile")));
       setSelectedStageId(preferredStageId(next.plan?.stages));
-      setStageOpen(initialView === "stage" && Boolean(next.plan?.stages.some((stage) => stage.status === "active" || stage.status === "awaiting_note")));
+      setStageOpen(initialView === "stage" && Boolean(next.plan?.stages.some((stage) => stage.status !== "completed")));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法创建临时会话");
     } finally {
