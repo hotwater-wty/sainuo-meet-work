@@ -50,7 +50,7 @@ Lumen 的差异化由四个连续行为构成：
 
 若已有`.env.local`则忽略
 
-<img src="assets/.env.local示例.png"/>
+<img src="assets/大模型.env.local示例.png"/>
 
 控制台执行：
 ```bash
