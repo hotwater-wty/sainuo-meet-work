@@ -71,4 +71,12 @@ describe("SessionStore", () => {
     store.enforceRate(session, 2);
     expect(() => store.enforceRate(session, 2)).toThrow("请求过于频繁");
   });
+
+  it("deletes an explicitly ended temporary session", () => {
+    const store = new SessionStore();
+    const session = store.create();
+    expect(store.delete(session.id)).toBe(true);
+    expect(store.get(session.id)).toBeUndefined();
+    expect(store.delete(session.id)).toBe(false);
+  });
 });

@@ -48,8 +48,9 @@ async function apiSession(response: Response): Promise<SessionView> {
   return body.session;
 }
 
-type WorkbenchView = "home" | "profile" | "reading";
+type WorkbenchView = "home" | "profile" | "reading" | "stage";
 type InspectorTab = "source" | "map" | "conversation" | "citations";
+type PendingNavigation = "back" | "exit";
 
 interface CitationInspector {
   title: string;
@@ -83,6 +84,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   const [streamingText, setStreamingText] = useState("");
   const [selectedFileName, setSelectedFileName] = useState<string>();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation>();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const bootstrap = useCallback(async () => {
@@ -96,7 +98,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       setShowImporter(initialView === "home" || !next.source);
       setShowProfile(Boolean(next.source && (!next.plan || initialView === "profile")));
       setSelectedStageId(preferredStageId(next.plan?.stages));
-      setStageOpen(initialView === "reading" && Boolean(next.plan?.stages.some((stage) => stage.status === "active" || stage.status === "awaiting_note")));
+      setStageOpen(initialView === "stage" && Boolean(next.plan?.stages.some((stage) => stage.status === "active" || stage.status === "awaiting_note")));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "无法创建临时会话");
     } finally {
@@ -218,6 +220,66 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
     } finally {
       setBusy(false);
     }
+  }
+
+  async function endCurrentSession() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/sessions/current", { method: "DELETE" });
+      if (!response.ok) {
+        const body = (await response.json()) as ApiErrorBody;
+        throw new Error(body.error?.message ?? "暂时无法结束当前会话");
+      }
+      setSession(undefined);
+      setSelectedStageId(undefined);
+      setStageOpen(false);
+      setStreamingText("");
+      setInspectorTabs([]);
+      setSourcePreview(undefined);
+      setPendingNavigation(undefined);
+      router.push("/");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "暂时无法结束当前会话");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function requestBackNavigation() {
+    if (pathname === "/home") {
+      router.push("/");
+      return;
+    }
+    setPendingNavigation("back");
+  }
+
+  function confirmBackNavigation() {
+    setPendingNavigation(undefined);
+    if (pathname === "/profile") {
+      setShowImporter(true);
+      setShowProfile(false);
+      router.push("/home");
+      return;
+    }
+    if (pathname === "/reading/stage") {
+      setStageOpen(false);
+      router.push("/reading");
+      return;
+    }
+    setShowImporter(false);
+    setShowProfile(true);
+    router.push("/profile");
+  }
+
+  async function enterStage(stageId: string, start = false) {
+    setSelectedStageId(stageId);
+    setStageOpen(true);
+    if (start) {
+      if (await runStageAction(stageId, "start")) router.replace("/reading/stage");
+      return;
+    }
+    router.push("/reading/stage");
   }
 
   async function openSources(stageId: string, title: string) {
@@ -472,7 +534,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
       <div className={`workspace${sidebarCollapsed ? " sidebar-collapsed" : ""}${inspectorTabs.length ? " inspector-open" : ""}`}>
         <aside className="source-rail" aria-label="当前来源">
           <div className="rail-toolbar">
-            <button className="rail-brand" type="button" title="返回首页" onClick={() => router.push("/home")}>
+            <button className="rail-brand" type="button" title="返回首页" onClick={() => source ? setPendingNavigation("exit") : router.push("/")}>
               <span className="brand-mark" aria-hidden="true">L</span>
               <span><strong>Lumen</strong><small>技术文档精读</small></span>
             </button>
@@ -584,8 +646,8 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
         </aside>
 
         <section className="main-workspace">
-          {pathname !== "/" && pathname !== "/home" && (
-            <button className="main-back-button" type="button" title="返回" aria-label="返回">
+          {pathname !== "/" && !busy && (
+            <button className="main-back-button" type="button" title={pathname === "/home" ? "返回首页" : "返回上一步"} aria-label="返回" onClick={requestBackNavigation}>
               <ArrowLeft size={19} />
               <span>返回</span>
             </button>
@@ -643,6 +705,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
                   <label className="file-input">
                     <Upload size={22} aria-hidden="true" />
                     <span>PDF、Markdown、TXT 或 HTML</span>
+                    <span className="file-input-cta">选择文件</span>
                     <input
                       ref={fileRef}
                       name="file"
@@ -698,11 +761,12 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
               selectedStageId={selectedStageId}
               streamingText={streamingText}
               stageOpen={stageOpen}
-              onStageOpenChange={setStageOpen}
               onEditProfile={() => { setShowProfile(true); router.push("/profile"); }}
+              onExit={() => setPendingNavigation("exit")}
+              onComplete={() => void endCurrentSession()}
               onOpenSources={openSources}
               onOpenMessageCitations={(title, citations) => openCitationInspector({ title, citations, insufficient: citations.length === 0 })}
-              onSelectStage={setSelectedStageId}
+              onEnterStage={enterStage}
               onStageAction={runStageAction}
               onGenerateDraft={generateDraft}
               onFinishWithNoteDecision={finishStageWithNoteDecision}
@@ -729,11 +793,25 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
           onOpenCitations={(title, citations) => openCitationInspector({ title, citations, insufficient: citations.length === 0 })}
           onOpenStage={(stageId) => {
             const target = session.plan?.stages.find((stage) => stage.id === stageId);
-            setSelectedStageId(stageId);
-            setStageOpen(true);
-            if (target?.status === "pending") void runStageAction(stageId, "start");
+            void enterStage(stageId, target?.status === "pending");
           }}
         />
+      )}
+      {pendingNavigation && (
+        <div className="note-decision-backdrop" role="presentation">
+          <section className="note-decision-dialog navigation-decision-dialog" role="dialog" aria-modal="true" aria-labelledby="navigation-decision-heading">
+            <AlertTriangle size={24} aria-hidden="true" />
+            <h3 id="navigation-decision-heading">{pendingNavigation === "exit" ? "暂时离开这份文档？" : "确认返回上一步？"}</h3>
+            <p>{pendingNavigation === "exit" ? "当前为匿名临时会话。结束精读后，本次路线、对话和未导出的笔记将被清除，且无法恢复。" : "当前为匿名临时会话。返回上一步会离开本阶段；请先确认已记录需要保留的内容。"}</p>
+            <div className="note-decision-actions">
+              <button className="secondary-button" type="button" disabled={busy} onClick={() => setPendingNavigation(undefined)}>继续当前阅读</button>
+              <button className="danger-button" type="button" disabled={busy} onClick={() => void (pendingNavigation === "exit" ? endCurrentSession() : confirmBackNavigation())}>
+                {busy ? <LoaderCircle className="spin" size={18} /> : <ArrowLeft size={17} />}
+                {pendingNavigation === "exit" ? "结束并离开" : "确认返回"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </main>
   );
@@ -861,11 +939,12 @@ function PlanView({
   selectedStageId,
   streamingText,
   stageOpen,
-  onStageOpenChange,
   onEditProfile,
+  onExit,
+  onComplete,
   onOpenSources,
   onOpenMessageCitations,
-  onSelectStage,
+  onEnterStage,
   onStageAction,
   onGenerateDraft,
   onFinishWithNoteDecision,
@@ -877,11 +956,12 @@ function PlanView({
   selectedStageId?: string;
   streamingText: string;
   stageOpen: boolean;
-  onStageOpenChange: (open: boolean) => void;
   onEditProfile: () => void;
+  onExit: () => void;
+  onComplete: () => void;
   onOpenSources: (stageId: string, title: string) => void;
   onOpenMessageCitations: (title: string, citations: Citation[]) => void;
-  onSelectStage: (stageId: string) => void;
+  onEnterStage: (stageId: string, start?: boolean) => Promise<void>;
   onStageAction: (
     stageId: string,
     action: "start" | "follow_up" | "rephrase" | "answer_check" | "finish",
@@ -900,14 +980,8 @@ function PlanView({
   const plan = session.plan!;
   const selectedStage = plan.stages.find((stage) => stage.id === selectedStageId);
 
-  useEffect(() => {
-    if (selectedStage && (selectedStage.status === "active" || selectedStage.status === "awaiting_note")) onStageOpenChange(true);
-  }, [onStageOpenChange, selectedStage?.id, selectedStage?.status]);
-
   function openStage(stageId: string, start = false) {
-    onSelectStage(stageId);
-    onStageOpenChange(true);
-    if (start) void onStageAction(stageId, "start");
+    void onEnterStage(stageId, start);
   }
 
   const map = (
@@ -949,11 +1023,16 @@ function PlanView({
             </section>
           )}
           {route}
+          {!allCompleted && (
+            <div className="route-exit-row">
+              <button className="quiet-exit-button" type="button" onClick={onExit}>暂时离开</button>
+            </div>
+          )}
           {allCompleted && (
             <section className="completion-card" aria-label="阅读路线已完成">
               <CheckCircle2 size={22} />
               <div><strong>本次精读路线已完成</strong><p>阶段笔记已整理完成，可以开始下一份技术文档。</p></div>
-              <button className="primary-button" type="button" onClick={() => window.location.assign("/home")}>学学别的</button>
+              <button className="primary-button" type="button" onClick={onComplete}>学学别的</button>
             </section>
           )}
         </>

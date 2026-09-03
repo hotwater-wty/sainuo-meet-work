@@ -42,6 +42,10 @@ export class SessionStore {
     return session;
   }
 
+  delete(id: string): boolean {
+    return this.sessions.delete(id);
+  }
+
   replaceSource(session: SessionState, source: SourceRecord, replace: boolean): void {
     if (session.source && !replace) {
       throw new AppError("SOURCE_EXISTS", "当前会话已有文档，请确认后再替换", 409);

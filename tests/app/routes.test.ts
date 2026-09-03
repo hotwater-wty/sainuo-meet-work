@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { POST as createSession } from "../../src/app/api/sessions/route.js";
-import { GET as currentSession } from "../../src/app/api/sessions/current/route.js";
+import { DELETE as deleteCurrentSession, GET as currentSession } from "../../src/app/api/sessions/current/route.js";
 import { POST as importUrl } from "../../src/app/api/sources/import/route.js";
 import { POST as uploadSource } from "../../src/app/api/sources/upload/route.js";
 
@@ -40,6 +40,20 @@ describe("P2 route contract", () => {
     expect(nextResponse.status).toBe(200);
     expect(next.session.id).not.toBe(original.session.id);
     expect(nextResponse.headers.get("set-cookie")).toContain(next.session.id);
+  });
+
+  it("ends an anonymous session and clears its browser cookie", async () => {
+    const cookie = await sessionCookie();
+    const ended = await deleteCurrentSession(
+      new NextRequest("http://localhost/api/sessions/current", { method: "DELETE", headers: { cookie } }),
+    );
+    expect(ended.status).toBe(204);
+    expect(ended.headers.get("set-cookie")).toContain("Max-Age=0");
+
+    const restored = await currentSession(
+      new NextRequest("http://localhost/api/sessions/current", { headers: { cookie } }),
+    );
+    expect(restored.status).toBe(401);
   });
 
   it("uploads a text source and refuses an unconfirmed replacement", async () => {

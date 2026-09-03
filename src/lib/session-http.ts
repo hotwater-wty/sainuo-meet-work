@@ -9,6 +9,11 @@ export function sessionCookie(id: string): string {
   return `${SESSION_COOKIE}=${encodeURIComponent(id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure}`;
 }
 
+export function expiredSessionCookie(): string {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
+}
+
 export function requireSession(request: NextRequest) {
   const id = request.cookies.get(SESSION_COOKIE)?.value;
   const session = id ? sessionStore.get(id) : undefined;
