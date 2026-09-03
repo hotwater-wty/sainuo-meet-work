@@ -13,7 +13,10 @@
   --danger: #a63b36;
   --danger-soft: #fff0ee;
   --blue: #2866a6;
-  --frame-left: max(0px, calc((100vw - 1440px) / 2));
+  /* The application frame is anchored to the viewport. The main area can
+     center its content internally without moving the fixed left rail during
+     browser zoom or on extra-wide displays. */
+  --frame-left: 0px;
   --left-rail-width: 250px;
   --inspector-width: clamp(300px, 24.3056vw, 420px);
   font-family:
@@ -55,10 +58,7 @@ button:disabled {
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   overflow: hidden;
   color: var(--ink);
-  background:
-    radial-gradient(circle at 15% 18%, rgb(184 211 232 / 42%), transparent 25rem),
-    radial-gradient(circle at 85% 78%, rgb(226 207 169 / 30%), transparent 30rem),
-    var(--paper);
+  background: var(--paper);
 }
 
 .landing-nav {
@@ -84,7 +84,7 @@ button:disabled {
   place-items: center;
   border-radius: 10px;
   color: white;
-  background: linear-gradient(145deg, #75a5cf, #4f83b1);
+  background: #5d8dbb;
   box-shadow: 0 7px 15px rgb(73 118 156 / 25%);
   font-size: 17px;
   font-weight: 800;
@@ -152,7 +152,7 @@ button:disabled {
   padding: 0 20px;
   border-radius: 10px;
   color: white;
-  background: linear-gradient(135deg, #6e9fc8, #4e7faa);
+  background: #5d8dbb;
   box-shadow: 0 12px 24px rgb(72 119 157 / 26%);
   font-size: 14px;
   font-weight: 800;
@@ -166,16 +166,6 @@ button:disabled {
 }
 
 .landing-note { margin: 14px 0 0; color: #888176; font-size: 11px; }
-
-.landing-orbit {
-  position: absolute;
-  z-index: -1;
-  border: 1px solid rgb(121 164 197 / 28%);
-  border-radius: 999px;
-}
-
-.landing-orbit-one { width: 620px; height: 620px; }
-.landing-orbit-two { width: 850px; height: 360px; transform: rotate(-16deg); opacity: 0.52; }
 
 .landing-points {
   width: min(1060px, calc(100% - 48px));
@@ -2062,8 +2052,6 @@ a.secondary-button {
   .landing-hero { width: calc(100% - 32px); min-height: 440px; padding: 58px 0 44px; }
   .landing-hero h1 { font-size: clamp(38px, 12vw, 52px); }
   .landing-description { font-size: 14px; }
-  .landing-orbit-one { width: 420px; height: 420px; }
-  .landing-orbit-two { width: 550px; height: 240px; }
   .landing-points { width: calc(100% - 32px); grid-template-columns: 1fr; gap: 10px; margin-bottom: 28px; }
 
   .topbar {

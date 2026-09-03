@@ -247,7 +247,7 @@ export function Workbench({ initialView = "home" }: { initialView?: WorkbenchVie
   }
 
   function requestBackNavigation() {
-    if (pathname === "/home") {
+    if (!session?.source || pathname === "/home") {
       router.push("/");
       return;
     }

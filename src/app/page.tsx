@@ -13,8 +13,6 @@ export default function LandingPage() {
       </nav>
 
       <section className="landing-hero" aria-labelledby="landing-title">
-        <div className="landing-orbit landing-orbit-one" aria-hidden="true" />
-        <div className="landing-orbit landing-orbit-two" aria-hidden="true" />
         <p className="landing-kicker">READ THE SOURCE · KEEP THE CONTEXT</p>
         <h1 id="landing-title">把陌生技术文档，<br />读成自己的理解。</h1>
         <p className="landing-description">
