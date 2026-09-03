@@ -107,11 +107,20 @@
 
 ### P6 质量、安全与上线
 
-- 状态：待开始
+- 状态：待开始（P6.0 Redis 会话存储设计已完成，待确认实施）
 - 目标：形成评审者可以直接访问的稳定 Demo。
-- 工作：限流、日志、健康检查、Docker、Playwright 桌面/移动测试、模型预算、Render 或同类平台部署。
+- 工作：先完成 P6.0 的 Redis 临时会话存储、重启/多实例恢复与流式并发保护；再做限流、日志、健康检查、Docker、Playwright 桌面/移动测试、模型预算、Render 或同类平台部署。
 - 退出标准：公网 HTTPS 可访问；主流程 5 次至少成功 4 次；390 px 无遮挡；密钥不出现在客户端或日志；可明确下线。
 - 阶段交接重点：部署拓扑、费用控制、数据生命周期、监控、已知非生产限制和下线方式。
+
+### P6.0 Redis 临时会话存储（P6 前置）
+
+- 状态：设计完成，待用户确认 Redis provider、部署平台、预算和保存期限后实施。
+- 目标：把匿名会话的已提交业务状态从单进程内存迁移到带 TTL 的 Redis，使刷新、应用重启和多实例读取在会话有效期内可恢复。
+- 最小范围：SessionRepository 抽象；tdr:session:v1:{id} 单 JSON value；2 小时滑动 TTL；Cookie 只存随机 ID；会话序列化大小保护；版本/CAS 或短锁；SSE 的 streamingStageId 显式持久化与释放。
+- 不包含：登录、长期历史、跨设备所有权、原始 PDF 二进制保存、跨文档检索和 UI 草稿持久化。
+- 验收：同 Cookie 刷新、重启应用、不同应用进程读取均恢复路线/消息/笔记；TTL 到期明确报会话过期；双标签页冲突、SSE 中断、模型失败和 Redis 不可用均不产生重复或卡死状态。
+- 设计依据：docs/reports/LOCAL_UX_PERSISTENCE_AUDIT.md、docs/reports/REDIS_SESSION_STORE_FEASIBILITY.md。
 
 ### P7 面试交付材料
 
